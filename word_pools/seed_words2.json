@@ -1,0 +1,10 @@
+{
+  "anagram_friendly": ["COVETOUS", "TOOLKIT", "ELAPSED", "REACTION", "CREATIVE", "THERAPY", "DESIGNER", "PRESENT", "SECTION", "CAUTION"],
+  "charade_friendly": ["ARCHLY", "DOGLEGGED", "TOOLKIT", "HANDSOME", "OFFSIDE", "FORGET", "OUTRIGHT", "MISTAKE", "PLAYER", "BELOW"],
+  "hidden_word_friendly": ["UNHINGE", "IDEAL", "AMISS", "STARE", "ENTRY", "ALERT", "INNER"],
+  "container_friendly": ["UNHINGE", "DROOPY", "VICTORIAN", "STALWART", "BELIEVE", "CURTAIN", "PLIANT", "ORANGE", "STREET", "GRAIN"],
+  "reversal_friendly": ["DROOPY", "STOPS", "PULLS", "PANIC", "REPEL", "STEEP", "WARDS", "KEEPS", "LEVER", "SNAPS"],
+  "homophone_friendly": ["WHALE", "RAISE", "SITE", "COARSE", "PEACE", "PARE", "BOARD", "CHUTE", "STEEL", "STARE"],
+  "double_def_friendly": ["SEMI", "OVEREAT", "EXAM", "MATCH", "CATER", "DESERT", "POLISH", "LEAVES", "STERN", "TENDER"],
+  "standard_utility": ["VICTORIAN", "DOGLEGGED", "IMPRESSIVE", "CHUCKLE", "ADDUCED", "BANANAS", "DROOPY"]
+}

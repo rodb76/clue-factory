@@ -1,0 +1,74 @@
+{
+  "summary": {
+    "total_clues": 10,
+    "passed": 0,
+    "failed": 10,
+    "pass_rate": "0.0%",
+    "mechanical_failures": 0,
+    "solver_failures": 7,
+    "errors": 10
+  },
+  "passed_clues": [],
+  "failed_clues": [
+    {
+      "word": "LISTEN",
+      "clue_type": "Anagram",
+      "passed": false,
+      "error": "Audit failed and max regenerations reached"
+    },
+    {
+      "word": "SILENT",
+      "clue_type": "Anagram",
+      "passed": false,
+      "error": "Audit failed and max regenerations reached"
+    },
+    {
+      "word": "STAR",
+      "clue_type": "Reversal",
+      "passed": false,
+      "error": "Mechanical validation failed: wordplay: Invalid reversal: 'RATS (hidden in 'arts')' reversed ('stranineddihstar') ≠ 'STAR'"
+    },
+    {
+      "word": "RATS",
+      "clue_type": "Reversal",
+      "passed": false,
+      "error": "Referee judged: Mismatch: Expected 'RATS' but solver found 'STAR'. Low similarity (25.0%) - solver likely misidentified the definition or wordplay."
+    },
+    {
+      "word": "STEAL",
+      "clue_type": "Hidden Word",
+      "passed": false,
+      "error": "Referee judged: Mismatch: Expected 'STEAL' but solver found 'PINCH'. Low similarity (0.0%) - solver likely misidentified the definition or wordplay."
+    },
+    {
+      "word": "PAINT",
+      "clue_type": "Container",
+      "passed": false,
+      "error": "Mechanical validation failed: wordplay: Missing 'outer' or 'inner' for container"
+    },
+    {
+      "word": "BACK",
+      "clue_type": "Charade",
+      "passed": false,
+      "error": "Audit failed and max regenerations reached"
+    },
+    {
+      "word": "PART",
+      "clue_type": "Charade",
+      "passed": false,
+      "error": "Audit failed and max regenerations reached"
+    },
+    {
+      "word": "TENDER",
+      "clue_type": "Double Definition",
+      "passed": false,
+      "error": "Audit failed and max regenerations reached"
+    },
+    {
+      "word": "HOUSE",
+      "clue_type": "Anagram",
+      "passed": false,
+      "error": "Mechanical validation failed: wordplay: Invalid anagram: 'SPOUSE' does not rearrange to 'HOUSE'"
+    }
+  ]
+}

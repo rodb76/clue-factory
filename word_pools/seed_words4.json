@@ -1,0 +1,10 @@
+{
+  "anagram_friendly": ["LIABILITY", "ASQUITH", "SERIOUS", "OCTET", "BOHEMIA", "SIMULATOR", "RAMPANT"],
+  "charade_friendly": ["ARCHIVIST", "ISLANDER", "PIANIST", "TURNPIKE", "STATIONER", "ENTREATY", "TEMPEST", "AUDIT", "DALLAS"],
+  "hidden_word_friendly": ["JESS", "AJAR", "EYED", "OXLIP", "SLYLY", "OMEGA", "BONY", "NICHE", "PASSE", "RECENT"],
+  "container_friendly": ["DYNASTY", "MAGNETIC", "INTERNEE", "CARTILAGE", "BREECH", "ESPALIER", "PRATTLES", "HURRICANE", "ASTROLABE", "STRAPLESS"],
+  "reversal_friendly": ["ASTHMA", "BUST", "TARIFF", "TINKLE", "BATTEN", "GRIN", "DONNED", "PINE"],
+  "homophone_friendly": ["THATCH", "ELATE", "GAGA", "INKY", "WHIRR", "SILK", "BERRY", "THREE", "NAVEL"],
+  "double_def_friendly": ["TABOO", "ABSTAIN", "DISPUTE", "STRATA", "SECOND", "TIGHT", "GROSS", "REALISE"],
+  "standard_utility": ["VOICEMAIL", "DELIBERATE", "MEDALLION", "AZERBAIJAN", "ADVERSE", "AMENITY", "DAUNTLESS", "UNDERWEAR"]
+}

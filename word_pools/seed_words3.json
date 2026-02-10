@@ -1,0 +1,10 @@
+{
+  "anagram_friendly": ["GRENADA", "TRANSPOSE", "GERMANIUM", "REPRESENT", "REARRANGE", "TREASON", "ACRONYM", "ARDENT", "DORIC"],
+  "charade_friendly": ["ENTOURAGE", "BACK-HEEL", "STATUS", "DETRACT", "GAZEBO", "RAYON", "BAPTISM", "GENDARME"],
+  "hidden_word_friendly": ["AORTA", "AMISS", "MIMOSA", "TENOR", "IBEX", "RACEME", "APACE"],
+  "container_friendly": ["BUNGALOW", "VAGRANT", "NURSING", "OPPRESS", "LADEN", "LUNGE", "DREDGER", "COPPICE"],
+  "reversal_friendly": ["TIMER", "REPEL", "SNAPS", "WARDS", "KEEPS", "PULLS", "PANIC", "REEL", "ENROL"],
+  "homophone_friendly": ["SITE", "COARSE", "BOARD", "CHUTE", "STEEL", "STARE", "VROOM", "FARE", "BRED"],
+  "double_def_friendly": ["WELL", "EVEN", "STERN", "TENDER", "LEAVES", "SLUG", "IMAGE", "PRANG", "TILER", "MACE"],
+  "standard_utility": ["PLAUDIT", "TIGER", "RAVIOLI", "ERNEST", "BANANAS", "CHUCKLE"]
+}

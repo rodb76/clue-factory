@@ -1,0 +1,10 @@
+{
+  "anagram_friendly": ["LISTEN", "SILENT", "RETAIN", "ENRAGED", "ORCHESTRA", "STATIONERY", "DORMITORY", "PUNISHMENT", "SPIRITOSO", "IMPORTANT"],
+  "charade_friendly": ["PARTRIDGE", "FARMING", "BACKDOOR", "SUPREMO", "LINEAGE", "CAUTION", "SET-TO", "FORTHRIGHT", "HANDSOME", "BELOW"],
+  "hidden_word_friendly": ["THECA", "SCONE", "LISTEN", "AORTA", "STERN", "IDEST", "AMEND", "BETRAY", "UNIT", "TIDE"],
+  "container_friendly": ["CALLOW", "PAINT", "VOICE", "THORAX", "SACRISTAN", "OVEREATEN", "PLAIN", "MONEY", "ENTRAP", "BUNGALOW"],
+  "reversal_friendly": ["REGAL", "STOPS", "SMART", "DIALS", "REMIT", "DRAWS", "WARD", "REBUT", "LEVER", "TIMER"],
+  "homophone_friendly": ["BEAR", "PARE", "LEAST", "SHEEN", "ALLOW", "SITE", "WHALE", "RAISE", "COARSE", "PEACE"],
+  "double_def_friendly": ["BLIND", "POLISH", "TENDER", "SPRUCE", "STEWED", "RESERVE", "MOULD", "CATER", "DESERT", "MATCH"],
+  "standard_utility": ["ELAPSED", "DRIVERS", "SWALLOW", "BITTERN", "ADMIRAL", "WORRIER", "INSTEAD", "ABSOLVE", "LASSO", "AEROSOL"]
+}

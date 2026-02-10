@@ -1,0 +1,503 @@
+"""
+Setter Agent: Generates Ximenean cryptic clues using Portkey AI.
+
+This module implements the "Setter" component of the cryptic clue generation system.
+It uses the Portkey AI Gateway to interface with Claude 3.5 Sonnet for creating
+clues that adhere to Ximenean standards (definition + fair wordplay + nothing else).
+"""
+
+import asyncio
+import sys
+import os
+import json
+import logging
+from typing import Optional
+from dotenv import load_dotenv
+
+# Fix: Force Windows to use the correct event loop policy
+if sys.platform.startswith("win"):
+    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+)
+logger = logging.getLogger(__name__)
+
+# Load environment variables from .env file
+load_dotenv()
+
+from portkey_ai import Portkey
+
+
+class SetterAgent:
+    """
+    Setter Agent responsible for generating Ximenean cryptic clues.
+    
+    Uses Portkey AI Gateway to communicate with Claude 3.5 Sonnet.
+    """
+    
+    # Configuration constants
+    BASE_URL = "https://eu.aigw.galileo.roche.com/v1"
+    # Inverted Model Tiering: Use stronger model for logic, cheaper for surface
+    LOGIC_MODEL_ID = os.getenv("LOGIC_MODEL_ID", os.getenv("MODEL_ID"))  # Wordplay generation
+    SURFACE_MODEL_ID = os.getenv("SURFACE_MODEL_ID", os.getenv("MODEL_ID"))  # Surface writing
+    MODEL_ID = LOGIC_MODEL_ID  # Default to logic model for backward compatibility
+    
+    def __init__(self, timeout: float = 30.0):
+        """Initialize the Setter Agent with Portkey client.
+        
+        Args:
+            timeout: Request timeout in seconds (default: 30.0).
+        """
+        self.api_key = os.getenv("PORTKEY_API_KEY")
+        
+        if not self.api_key:
+            raise ValueError(
+                "PORTKEY_API_KEY environment variable not set. "
+                "Please set it before initializing the Setter Agent."
+            )
+        
+        # Initialize Portkey client with explicit base_url and api_key
+        self.client = Portkey(
+            api_key=self.api_key,
+            base_url=self.BASE_URL,
+            timeout=timeout
+        )
+        
+        logger.info(f"Setter Agent initialized")
+        logger.info(f"  Logic model (wordplay): {self.LOGIC_MODEL_ID}")
+        logger.info(f"  Surface model (clue text): {self.SURFACE_MODEL_ID}")
+    
+    def _extract_response_text(self, response) -> str:
+        """
+        Extract text content from Portkey API response.
+        
+        Handles various response formats from the Portkey Gateway.
+        
+        Args:
+            response: The response object from Portkey API.
+        
+        Returns:
+            Extracted text string.
+        
+        Raises:
+            ValueError: If response text cannot be extracted.
+        """
+        if not response.choices or len(response.choices) == 0:
+            raise ValueError("Empty response from API")
+        
+        choice = response.choices[0]
+        response_text = None
+        
+        # Method 1: Try response.choices[0].text
+        if hasattr(choice, 'text') and isinstance(choice.text, str):
+            response_text = choice.text
+        # Method 2: Try response.choices[0].message.content (most common)
+        elif hasattr(choice, 'message') and hasattr(choice.message, 'content'):
+            msg_content = choice.message.content
+            # The content might be a dict, string, list, or iterator
+            if isinstance(msg_content, str):
+                response_text = msg_content
+            elif isinstance(msg_content, dict):
+                response_text = msg_content.get('text', '')
+            elif isinstance(msg_content, (list, tuple)) and len(msg_content) > 0:
+                first_item = msg_content[0]
+                if isinstance(first_item, dict):
+                    response_text = first_item.get('text', str(first_item))
+                else:
+                    response_text = str(first_item)
+            else:
+                # Try to convert iterator/complex type to list
+                try:
+                    msg_list = list(msg_content)
+                    if msg_list and isinstance(msg_list[0], dict):
+                        response_text = msg_list[0].get('text', '')
+                    elif msg_list:
+                        response_text = str(msg_list[0])
+                except:
+                    response_text = str(msg_content)
+        
+        if not response_text:
+            raise ValueError("Could not extract response text from API response")
+        
+        return response_text
+    
+    def generate_wordplay_only(
+        self,
+        answer: str,
+        clue_type: str,
+        retry_feedback: Optional[str] = None
+    ) -> dict:
+        """
+        STEP 1: Generate ONLY the wordplay components (fodder, indicator, mechanism).
+        
+        This allows mechanical validation BEFORE generating the full surface reading,
+        improving success rates dramatically.
+        
+        Args:
+            answer: The target word.
+            clue_type: Type of clue to generate.
+            retry_feedback: Optional feedback from failed mechanical validation.
+        
+        Returns:
+            Dictionary with wordplay_parts only (fodder, indicator, mechanism, type).
+        """
+        
+        retry_context = ""
+        if retry_feedback:
+            retry_context = f"\n\nPREVIOUS ATTEMPT FAILED:\n{retry_feedback}\n\nPlease correct this in your new attempt."
+        
+        system_prompt = """You are a Ximenean cryptic crossword wordplay generator. 
+Your job is to generate ONLY the mechanical wordplay components - NOT a full clue yet.
+
+Focus on creating technically sound wordplay that will pass mechanical validation.
+
+FEW-SHOT EXAMPLES:
+
+Anagram Example:
+{"wordplay_parts": {"fodder": "listen", "indicator": "disturbed", "mechanism": "anagram of listen"}, "definition_hint": "quiet"}
+
+Hidden Word Example:
+{"wordplay_parts": {"fodder": "modern unit", "indicator": "part of", "mechanism": "hidden in 'moderN UNIT'"}, "definition_hint": "single item"}
+
+Container Example:
+{"wordplay_parts": {"outer": "PAT", "inner": "IN", "indicator": "grips", "mechanism": "IN inside PAT"}, "definition_hint": "To apply color", "target_answer": "PAINT"}
+
+Follow these examples for technically sound wordplay."""
+
+        user_prompt = f"""Generate the wordplay components for answer "{answer.upper()}" using type "{clue_type}".{retry_context}
+
+Return ONLY JSON (no other text) with this structure:
+{{
+    "wordplay_parts": {{
+        "type": "{clue_type}",
+        "fodder": "The exact letters/words to manipulate",
+        "indicator": "The word that signals the operation",
+        "mechanism": "How the wordplay produces {answer.upper()}"
+    }},
+    "definition_hint": "What the answer means (for later surface generation)"
+}}
+
+CRITICAL RULES BY TYPE:
+- Anagram: fodder must contain EXACTLY the same letters as {answer.upper()}
+- Hidden Word: MANDATORY: You must verify the spelling by placing brackets around the hidden answer in your 'mechanism' string. Example for 'AORTA': 'found in r[ADIO ORTA]rio'. If the letters are not consecutive, it is a FAIL. The fodder must be real words/phrases. Verify character-by-character: {answer.upper()[0]}, {answer.upper()[1]}, {answer.upper()[2] if len(answer) > 2 else ''}, etc.
+- Charade: parts must CONCATENATE to exactly {answer.upper()}
+- Container: outer word must CONTAIN inner word to make {answer.upper()}
+- Reversal: word reversed must equal {answer.upper()}"""
+
+        try:
+            logger.info(f"Generating wordplay for '{answer}' (type: {clue_type}) [Model: LOGIC]")
+            
+            response = self.client.chat.completions.create(
+                model=self.LOGIC_MODEL_ID,  # Use stronger model for mechanical wordplay
+                max_tokens=300,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt}
+                ]
+            )
+            
+            # Extract response text
+            response_text = self._extract_response_text(response)
+            logger.info(f"Wordplay response received ({len(response_text)} chars)")
+            
+            # Parse JSON
+            wordplay_data = self._parse_json_response(response_text)
+            
+            # Add answer and type
+            wordplay_data["answer"] = answer.upper()
+            wordplay_data["type"] = clue_type
+            
+            return wordplay_data
+            
+        except Exception as e:
+            logger.error(f"Wordplay generation failed: {e}")
+            raise
+    
+    def generate_surface_from_wordplay(
+        self,
+        wordplay_data: dict,
+        answer: str
+    ) -> dict:
+        """
+        STEP 2: Generate the full clue surface reading from validated wordplay.
+        
+        This runs AFTER mechanical validation has passed.
+        
+        Args:
+            wordplay_data: The validated wordplay components.
+            answer: The target word.
+        
+        Returns:
+            Complete clue dictionary with surface reading.
+        """
+        
+        wordplay_parts = wordplay_data.get("wordplay_parts", {})
+        definition_hint = wordplay_data.get("definition_hint", "")
+        
+        system_prompt = """You are a Ximenean cryptic crossword surface writer.
+You receive validated wordplay components and create a smooth, natural-reading clue."""
+
+        user_prompt = f"""Create a complete cryptic clue using these VALIDATED wordplay components:
+
+Answer: {answer.upper()}
+Type: {wordplay_parts.get('type')}
+Fodder: {wordplay_parts.get('fodder')}
+Indicator: {wordplay_parts.get('indicator')}
+Mechanism: {wordplay_parts.get('mechanism')}
+Definition hint: {definition_hint}
+
+Return ONLY JSON with:
+{{
+    "clue": "Complete natural-reading clue",
+    "definition": "The definition part",
+    "explanation": "Full breakdown"
+}}
+
+Requirements:
+- Include the definition and ALL wordplay components naturally
+- Make it read like a coherent English sentence
+- Use ONLY horizontal indicators (no "rising", "up", "over", etc.)
+- Don't explain the wordplay in the clue itself
+- CRITICAL: You MUST use a synonym for the definition_hint '{definition_hint}' in the surface reading
+- STRICTLY FORBIDDEN: You CANNOT use the word '{answer.upper()}' itself anywhere in the clue text"""
+
+        try:
+            logger.info(f"Generating surface for '{answer}' [Model: SURFACE]")
+            
+            response = self.client.chat.completions.create(
+                model=self.SURFACE_MODEL_ID,  # Use cheaper model for creative surface writing
+                max_tokens=300,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt}
+                ]
+            )
+            
+            # Extract response text
+            response_text = self._extract_response_text(response)
+            logger.info(f"Surface response received ({len(response_text)} chars)")
+            
+            # Parse JSON
+            surface_data = self._parse_json_response(response_text)
+            
+            # Combine with wordplay data
+            complete_clue = {
+                "clue": surface_data.get("clue", ""),
+                "definition": surface_data.get("definition", ""),
+                "wordplay_parts": wordplay_parts,
+                "explanation": surface_data.get("explanation", ""),
+                "type": wordplay_parts.get("type"),
+                "answer": answer.upper()
+            }
+            
+            return complete_clue
+            
+        except Exception as e:
+            logger.error(f"Surface generation failed: {e}")
+            raise
+    
+    def generate_cryptic_clue(
+        self, 
+        answer: str, 
+        clue_type: str,
+        theme: Optional[str] = None
+    ) -> dict:
+        """
+        Generate a Ximenean cryptic clue for the given answer and clue type.
+        
+        Args:
+            answer: The target word for which to generate a clue.
+            clue_type: Type of clue (e.g., "Anagram", "Hidden Word", "Charades", 
+                      "Container", "Reversal", "Homophone", "Double Definition", "&lit").
+            theme: Optional theme or context constraint for the clue.
+        
+        Returns:
+            A dictionary containing:
+            - clue: The final surface reading
+            - definition: The "straight" part of the clue
+            - wordplay_parts: Breakdown of components (fodder, indicators, etc.)
+            - explanation: Mechanical breakdown following "Definition + Wordplay = Answer"
+            - type: The clue type used
+            - answer: The target answer
+        
+        Raises:
+            ValueError: If the API response is invalid or JSON parsing fails.
+            Exception: If the API call fails.
+        """
+        
+        # Construct the prompt for the Setter
+        theme_context = f" Theme: {theme}." if theme else ""
+        
+        system_prompt = """You are a Ximenean cryptic crossword setter. You generate clues that follow the Ximenean standard:
+- A precise definition (the "straight" meaning)
+- A fair subsidiary indication (wordplay)
+- Nothing else
+
+Always return your response as a JSON object with NO additional text before or after."""
+
+        user_prompt = f"""Generate a Ximenean cryptic clue for the answer "{answer.upper()}" using clue type "{clue_type}".{theme_context}
+
+Your response MUST be valid JSON (and ONLY JSON) with exactly this structure:
+{{
+    "clue": "The complete clue surface reading",
+    "definition": "The definition part of the clue",
+    "wordplay_parts": {{
+        "type": "{clue_type}",
+        "fodder": "The letters/words being manipulated (if applicable)",
+        "indicator": "The word indicating the wordplay (if applicable)",
+        "mechanism": "Brief description of how the wordplay works"
+    }},
+    "explanation": "Step-by-step breakdown: [Definition part identifies X], [Indicator 'Y' suggests Z operation], [Operating on W gives {answer.upper()}]",
+    "is_fair": true
+}}"""
+
+        try:
+            logger.info(f"Generating clue for '{answer}' with type '{clue_type}'")
+            
+            # Make API request using the Portkey client
+            response = self.client.chat.completions.create(
+                model=self.MODEL_ID,
+                max_tokens=500,
+                messages=[
+                    {
+                        "role": "system",
+                        "content": system_prompt
+                    },
+                    {
+                        "role": "user",
+                        "content": user_prompt
+                    }
+                ]
+            )
+            
+            
+            # Extract response text using helper method
+            response_text = self._extract_response_text(response)
+            logger.info(f"Clue response received ({len(response_text)} chars)")
+            
+            # Parse JSON response
+            clue_json = self._parse_json_response(response_text)
+            
+            # Add metadata
+            clue_json["type"] = clue_type
+            clue_json["answer"] = answer.upper()
+            
+            logger.info(f"Successfully generated clue: {clue_json['clue']}")
+            return clue_json
+        
+        except json.JSONDecodeError as e:
+            logger.error(f"Failed to parse JSON response: {e}")
+            raise ValueError(f"Invalid JSON in API response: {e}") from e
+        except Exception as e:
+            error_msg = str(e).lower()
+            if "timeout" in error_msg or "connecttimeout" in error_msg:
+                logger.error(
+                    f"API request timed out. The Portkey endpoint may be unreachable. "
+                    f"Check your network connectivity and API key configuration."
+                )
+            logger.error(f"API call failed: {e}")
+            raise
+    
+    @staticmethod
+    def _parse_json_response(response_text: str) -> dict:
+        """
+        Parse JSON from the model response, handling potential formatting issues.
+        Looks for the LAST valid JSON block to handle "let me reconsider" chatter.
+        
+        Args:
+            response_text: The raw text response from the API.
+        
+        Returns:
+            Parsed JSON as a dictionary.
+        
+        Raises:
+            ValueError: If JSON parsing fails.
+        """
+        response_text = response_text.strip()
+        
+        # Try direct parsing first
+        try:
+            return json.loads(response_text)
+        except json.JSONDecodeError:
+            pass
+        
+        # Try to extract JSON if wrapped in markdown code blocks
+        # Find ALL code blocks and try the LAST valid one (handles "wait, let me reconsider")
+        if "```" in response_text:
+            code_blocks = []
+            parts = response_text.split("```")
+            
+            # Collect all potential JSON blocks (odd indices are inside code blocks)
+            for i in range(1, len(parts), 2):
+                block = parts[i].strip()
+                # Remove language specifier if present
+                if block.startswith("json"):
+                    block = block[4:].strip()
+                code_blocks.append(block)
+            
+            # Try parsing from last to first (most recent correction)
+            for block in reversed(code_blocks):
+                try:
+                    return json.loads(block)
+                except json.JSONDecodeError:
+                    continue
+        
+        # Try to find JSON objects in the text (look for last {...})
+        import re
+        # Find all potential JSON objects
+        json_pattern = r'\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}'
+        matches = list(re.finditer(json_pattern, response_text, re.DOTALL))
+        
+        # Try from last to first
+        for match in reversed(matches):
+            try:
+                return json.loads(match.group())
+            except json.JSONDecodeError:
+                continue
+        
+        # If all else fails, raise error
+        raise ValueError(f"Could not parse JSON from response: {response_text[:200]}...")
+
+
+def main():
+    """Example usage of the Setter Agent.
+    
+    NOTE: This will attempt to connect to the Portkey endpoint at:
+    https://eu.aigw.galileo.roche.com/v1
+    
+    If you receive a timeout error, verify:
+    1. PORTKEY_API_KEY environment variable is set correctly
+    2. Network connectivity to the Portkey gateway is available
+    3. The API key has appropriate permissions
+    """
+    try:
+        # Initialize the Setter Agent with extended timeout for demo
+        setter = SetterAgent(timeout=45.0)
+        
+        # Example: Generate a clue
+        example_answer = "LISTEN"
+        example_type = "Hidden Word"
+        
+        print(f"\n{'='*60}")
+        print(f"Generating cryptic clue for: {example_answer}")
+        print(f"Clue type: {example_type}")
+        print(f"{'='*60}\n")
+        
+        clue = setter.generate_cryptic_clue(
+            answer=example_answer,
+            clue_type=example_type
+        )
+        
+        print("Generated Clue:")
+        print(json.dumps(clue, indent=2))
+        
+    except Exception as e:
+        logger.error(f"Error in main: {e}")
+        raise
+
+
+if __name__ == "__main__":
+    main()

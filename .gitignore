@@ -1,0 +1,17 @@
+# Virtual Environment
+venv/
+.venv/
+env/
+bin/
+include/
+lib/
+share/
+pyvenv.cfg
+
+# Logs and temporary files
+*.log
+used_words.log
+final_clues_output.json
+
+# Secrets
+.env
