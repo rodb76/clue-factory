@@ -115,12 +115,15 @@ Average time per clue: 24.5 seconds
   },
   "clues": [
     {
+      "id": "hiddenword_20260210093015_LISTEN",
+      "clue": "Pay attention to hostile entries (6)",
+      "length": 6,
+      "reveal_order": [2, 4, 0, 5, 1, 3],
       "word": "LISTEN",
       "clue_type": "Hidden Word",
-      "clue": "Pay attention to hostile entries",
+      "passed": true,
       "definition": "Pay attention",
       "explanation": "[Pay attention] is the definition. [hostile ENtries] contains LISTEN.",
-      "passed": true,
       "mechanical_valid": true,
       "solver_answer": "LISTEN",
       "audit": {
@@ -131,6 +134,12 @@ Average time per clue: 24.5 seconds
   ]
 }
 ```
+
+**Compatibility Fields** (added for app integration):
+- `id`: Unique identifier for the clue
+- `clue`: Clue text with enumeration guaranteed (e.g., "(6)" or "(5,2,3)")
+- `length`: Letter count only (ignores spaces/hyphens)
+- `reveal_order`: Shuffled indices for progressive letter reveal
 
 ## Timing Expectations
 

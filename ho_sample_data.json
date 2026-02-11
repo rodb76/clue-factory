@@ -1,0 +1,47 @@
+[
+  {
+    "clue": "Confused enlist soldiers to be quiet (6)",
+    "answer": "SILENT",
+    "definition": "be quiet",
+    "source": "guardian",
+    "source_url": "https://www.theguardian.com/crosswords/example1",
+    "puzzle_date": "2024-01-15",
+    "is_reviewed": "1"
+  },
+  {
+    "clue": "Ocean current hidden in tide pool (4)",
+    "answer": "DEEP",
+    "definition": "Ocean current",
+    "source": "times_xwd_times",
+    "source_url": "https://www.thetimes.co.uk/crossword/example2",
+    "puzzle_date": "2024-01-16",
+    "is_reviewed": "1"
+  },
+  {
+    "clue": "Merchant reversed for grain (6)",
+    "answer": "RELAED",
+    "definition": "grain",
+    "source": "guardian",
+    "source_url": "https://www.theguardian.com/crosswords/example3",
+    "puzzle_date": "2024-01-17",
+    "is_reviewed": "0"
+  },
+  {
+    "clue": "Listen quietly (6)",
+    "answer": "SILENT",
+    "definition": "quietly",
+    "source": "times_xwd_times",
+    "source_url": "https://www.thetimes.co.uk/crossword/example4",
+    "puzzle_date": "2024-01-18",
+    "is_reviewed": "1"
+  },
+  {
+    "clue": "Novel written by Updike, perhaps (4)",
+    "answer": "LIKE",
+    "definition": "perhaps",
+    "source": "guardian",
+    "source_url": "https://www.theguardian.com/crosswords/example5",
+    "puzzle_date": "2024-01-19",
+    "is_reviewed": "1"
+  }
+]

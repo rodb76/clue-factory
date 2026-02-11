@@ -14,6 +14,9 @@ import sys
 import os
 import json
 import logging
+import re
+import random
+import hashlib
 from typing import List, Dict, Tuple, Optional
 from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor
@@ -44,6 +47,92 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
+# ==================== Utility Functions for Compatibility Fields ====================
+
+def ensure_enumeration(clue: str, answer: str) -> str:
+    """
+    Ensure clue has enumeration pattern like (N) or (N,M,P).
+    If missing, append it based on answer structure.
+    
+    Args:
+        clue: The clue text (may or may not have enumeration)
+        answer: The answer word/phrase
+        
+    Returns:
+        Clue with enumeration guaranteed
+    """
+    # Check if clue already has enumeration at the end
+    if re.search(r'\(\d+[,\-\d]*\)$', clue.strip()):
+        return clue
+    
+    # Calculate enumeration from answer
+    words = re.split(r'[\s\-]+', answer)
+    lengths = [str(len(word)) for word in words if word]
+    
+    if len(lengths) == 1:
+        enumeration = f"({lengths[0]})"
+    else:
+        enumeration = f"({','.join(lengths)})"
+    
+    return f"{clue.strip()} {enumeration}"
+
+
+def calculate_length(answer: str) -> int:
+    """
+    Calculate the letter-only length of an answer.
+    Strips spaces, hyphens, and other non-letter characters.
+    
+    Args:
+        answer: The answer word/phrase
+        
+    Returns:
+        Count of letters only
+    """
+    letters_only = re.sub(r'[^A-Za-z]', '', answer)
+    return len(letters_only)
+
+
+def generate_reveal_order(answer: str) -> List[int]:
+    """
+    Generate a shuffled list of indices for progressive letter reveal.
+    
+    Args:
+        answer: The answer word/phrase
+        
+    Returns:
+        List of shuffled indices [0...N-1] where N is letter count
+    """
+    letters_only = re.sub(r'[^A-Za-z]', '', answer)
+    indices = list(range(len(letters_only)))
+    random.shuffle(indices)
+    return indices
+
+
+def generate_clue_id(answer: str, clue_type: str, timestamp: str = None) -> str:
+    """
+    Generate a unique ID for the clue.
+    Format: {clue_type}_{timestamp}_{answer}
+    
+    Args:
+        answer: The answer word
+        clue_type: Type of clue (e.g., 'Anagram', 'Hidden Word')
+        timestamp: Optional timestamp string
+        
+    Returns:
+        Unique clue ID
+    """
+    clean_type = re.sub(r'[^a-z0-9]', '', clue_type.lower().replace(' ', '_'))
+    
+    if timestamp:
+        clean_timestamp = re.sub(r'[^0-9]', '', timestamp)
+        return f"{clean_type}_{clean_timestamp}_{answer}"
+    else:
+        # Use hash if no timestamp
+        hash_input = f"{clue_type}_{answer}".encode('utf-8')
+        hash_hex = hashlib.md5(hash_input).hexdigest()[:12]
+        return f"{clean_type}_{hash_hex}_{answer}"
+
+
 class ClueResult:
     """Container for a complete clue processing result."""
     
@@ -59,7 +148,12 @@ class ClueResult:
         passed: bool = False,
         error: str = None,
         regeneration_count: int = 0,
-        explanation_data: Dict = None
+        explanation_data: Dict = None,
+        # Compatibility fields for app integration
+        clue_id: str = None,
+        clue_with_enum: str = None,
+        length: int = None,
+        reveal_order: List[int] = None
     ):
         self.word = word
         self.clue_type = clue_type
@@ -72,21 +166,39 @@ class ClueResult:
         self.error = error
         self.regeneration_count = regeneration_count
         self.explanation_data = explanation_data
+        # Compatibility fields
+        self.clue_id = clue_id
+        self.clue_with_enum = clue_with_enum
+        self.length = length
+        self.reveal_order = reveal_order
     
     def to_dict(self) -> Dict:
         """Convert to dictionary for JSON serialization."""
-        result = {
-            "word": self.word,
-            "clue_type": self.clue_type,
-            "passed": self.passed,
-        }
+        result = {}
+        
+        # Compatibility fields first (for app integration)
+        if self.clue_id:
+            result["id"] = self.clue_id
+        if self.clue_with_enum:
+            result["clue"] = self.clue_with_enum
+        if self.length is not None:
+            result["length"] = self.length
+        if self.reveal_order:
+            result["reveal_order"] = self.reveal_order
+        
+        # Standard fields
+        result["word"] = self.word
+        result["clue_type"] = self.clue_type
+        result["passed"] = self.passed
         
         if self.error:
             result["error"] = self.error
             return result
         
         if self.clue_json:
-            result["clue"] = self.clue_json.get("clue", "")
+            # Only add original clue if compatibility clue not already added
+            if not self.clue_with_enum:
+                result["clue"] = self.clue_json.get("clue", "")
             result["definition"] = self.clue_json.get("definition", "")
             result["explanation"] = self.clue_json.get("explanation", "")
             result["wordplay_parts"] = self.clue_json.get("wordplay_parts", {})
@@ -346,6 +458,13 @@ def process_single_clue_sync(
         logger.info(f"  ✓ Audit passed (fairness_score: {audit_result.fairness_score:.1%})")
         logger.info(f"  ✓ PASSED: {word}")
         
+        # Generate compatibility fields for app integration
+        clue_text = clue_json.get("clue", "")
+        clue_with_enum = ensure_enumeration(clue_text, word)
+        length = calculate_length(word)
+        reveal_order = generate_reveal_order(word)
+        clue_id = generate_clue_id(word, clue_type)
+        
         return ClueResult(
             word=word,
             clue_type=clue_type,
@@ -355,7 +474,11 @@ def process_single_clue_sync(
             referee_result=referee_result,
             audit_result=audit_result,
             passed=True,
-            regeneration_count=regeneration_attempts
+            regeneration_count=regeneration_attempts,
+            clue_id=clue_id,
+            clue_with_enum=clue_with_enum,
+            length=length,
+            reveal_order=reveal_order
         )
         
     except Exception as e:

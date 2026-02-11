@@ -133,6 +133,80 @@ class TestReferee(unittest.TestCase):
         self.assertTrue(result_dict["passed"])
 
 
+class TestCompatibilityUtilityFunctions(unittest.TestCase):
+    """Test utility functions for compatibility fields."""
+    
+    def test_ensure_enumeration_missing(self):
+        """Test adding enumeration when missing."""
+        from main import ensure_enumeration
+        
+        clue = "Confused listen"
+        answer = "SILENT"
+        result = ensure_enumeration(clue, answer)
+        
+        self.assertEqual(result, "Confused listen (6)")
+    
+    def test_ensure_enumeration_present(self):
+        """Test preserving existing enumeration."""
+        from main import ensure_enumeration
+        
+        clue = "Confused listen (6)"
+        answer = "SILENT"
+        result = ensure_enumeration(clue, answer)
+        
+        self.assertEqual(result, "Confused listen (6)")
+    
+    def test_ensure_enumeration_multi_word(self):
+        """Test enumeration for multi-word answers."""
+        from main import ensure_enumeration
+        
+        clue = "Stop rugby foul"
+        answer = "KNOCK ON THE HEAD"
+        result = ensure_enumeration(clue, answer)
+        
+        self.assertIn("(5,2,3,4)", result)
+    
+    def test_calculate_length_simple(self):
+        """Test length calculation for simple word."""
+        from main import calculate_length
+        
+        self.assertEqual(calculate_length("SILENT"), 6)
+    
+    def test_calculate_length_with_spaces(self):
+        """Test length calculation ignoring spaces."""
+        from main import calculate_length
+        
+        self.assertEqual(calculate_length("KNOCK ON THE HEAD"), 14)
+    
+    def test_calculate_length_with_hyphens(self):
+        """Test length calculation ignoring hyphens."""
+        from main import calculate_length
+        
+        self.assertEqual(calculate_length("MAN-TRAP"), 7)
+    
+    def test_generate_reveal_order_length(self):
+        """Test reveal order has correct length."""
+        from main import generate_reveal_order
+        
+        order = generate_reveal_order("SILENT")
+        self.assertEqual(len(order), 6)
+    
+    def test_generate_reveal_order_unique(self):
+        """Test reveal order contains unique indices."""
+        from main import generate_reveal_order
+        
+        order = generate_reveal_order("TESTS")
+        self.assertEqual(len(order), len(set(order)))  # All unique
+    
+    def test_generate_clue_id(self):
+        """Test clue ID generation."""
+        from main import generate_clue_id
+        
+        clue_id = generate_clue_id("SILENT", "Anagram", "20260211")
+        self.assertIn("anagram", clue_id.lower())
+        self.assertIn("SILENT", clue_id)
+
+
 class TestClueResultIntegration(unittest.TestCase):
     """Test ClueResult data structure from main.py."""
     
@@ -159,7 +233,7 @@ class TestClueResultIntegration(unittest.TestCase):
         self.assertTrue(result.passed)
     
     def test_clue_result_to_dict(self):
-        """Test ClueResult serialization."""
+        """Test ClueResult serialization with compatibility fields."""
         from main import ClueResult
         
         result = ClueResult(
@@ -170,15 +244,30 @@ class TestClueResultIntegration(unittest.TestCase):
                 "clue": "Confused listen",
                 "definition": "Confused",
                 "explanation": "Anagram of LISTEN"
-            }
+            },
+            # Compatibility fields
+            clue_id="anagram_12345_SILENT",
+            clue_with_enum="Confused listen (6)",
+            length=6,
+            reveal_order=[2, 4, 0, 5, 1, 3]
         )
         
         result_dict = result.to_dict()
         
+        # Standard fields
         self.assertEqual(result_dict["word"], "SILENT")
         self.assertEqual(result_dict["clue_type"], "Anagram")
         self.assertTrue(result_dict["passed"])
-        self.assertEqual(result_dict["clue"], "Confused listen")
+        
+        # Compatibility fields
+        self.assertIn("id", result_dict)
+        self.assertEqual(result_dict["id"], "anagram_12345_SILENT")
+        self.assertIn("clue", result_dict)
+        self.assertEqual(result_dict["clue"], "Confused listen (6)")
+        self.assertIn("length", result_dict)
+        self.assertEqual(result_dict["length"], 6)
+        self.assertIn("reveal_order", result_dict)
+        self.assertEqual(result_dict["reveal_order"], [2, 4, 0, 5, 1, 3])
 
 
 def run_tests():

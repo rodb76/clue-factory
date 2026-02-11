@@ -143,17 +143,50 @@
 * [x] Implement quality thresholds (excellent clues preserved as-is).
 * [x] Create comprehensive test suite for workshop functionality.
 
+### Phase 12: George Ho Database Integration
 
-### Phase 12: Integration (optional)
+* [x] **Task: External Dataset Ingestion (`ho_processor.py`)**
+* Create a script to load the George Ho CSV (Columns: `clue`, `answer`, `definition`, `source`, `source_url`).
+* Filter rows where `is_reviewed` is 1 to ensure high-quality calibration data.
+* [x] **Task: Batch Sampler Integration**
+* Add a `--limit` argument to the script to control how many rows are processed.
+* Implement a `--random` flag to pull a diverse sample across different years and sources.
+* Add a `--source` filter (e.g., "times_xwd_times", "guardian") to target specific setting styles.
+
+* [x] **Task: Reverse-Logic Implementation**
+* Prompt the **Logic Tier** (Sonnet) to act as a "Solver/Deconstructor".
+* Input: `clue` + `answer`. Output: Identified `clue_type`, `fodder`, and `indicator`.
+
+* [x] **Task: Automated Enrichment**
+* Pass deconstructed data to **Surface Tier** (Haiku) to generate `hints` and `full_breakdown` for educational use.
+* Run the **Auditor** to apply `ximenean_score` and `difficulty_level`.
+
+* [x] **Task: Quality Filtering**
+* Ensure the sampler prioritizes rows where `is_reviewed == 1` to avoid machine errors from the original scrape.
+
+* [x] **Task: Metadata Preservation**
+* Map the original `puzzle_date` and `puzzle_name` into the final JSON metadata block for each clue.
+
+**Implementation Summary:**
+* Created `ho_processor.py` with ReverseEngineerAgent (Logic Tier) and ExplanationAgent (Surface Tier)
+* Implemented smart batch sampling with filters: `--limit`, `--random`, `--source`, `--reviewed-only`
+* Added automatic cleaning for missing enumerations and machine errors
+* Full pipeline: Reverse-engineering → Enrichment → Audit → Output with metadata
+* Fault-tolerant error handling (logs and continues on failure)
+* Comprehensive test suite in `tests/test_ho_processor.py`
+* Documentation in `docs/HO_PROCESSOR_README.md`
+
+
+### Phase 13: Integration (optional)
 * Ensure the `main_orchestrator` can optionally pipe clues through the Workshop before final JSON saving.
 
-### Phase 13: Explanations & Style Extension
+### Phase 14: Explanations & Style Extension (optional)
 * [ ] Create YouTube transcript extraction script.
-* [ ] **Task 13.1: Structural Mapping** - Use an LLM to analyze `transcript_JAGbz18gYHk.txt` and identify the "Explanation Architecture" (e.g., Intro -> Surface Deception -> Definition Reveal -> Wordplay Mechanical Breakdown -> Final "Aha!" Moment).
-* [ ] **Task 13.2: Style Enrichment** - Extract specific linguistic flourishes from transcripts (e.g., how the speaker uses words like "dastardly," "equation," or "fair play").
-* [ ] **Task 13.3: Few-Shot Prompting** - Integrate the mapped architecture into `explainer_prompt.md` as few-shot examples.
-* [ ] **Task 13.4: Human-in-the-loop (HITL) Review** - Test the Explainer on a validated clue and verify it matches the reference video's tone.
+* [ ] **Task 14.1: Structural Mapping** - Use an LLM to analyze `transcript_JAGbz18gYHk.txt` and identify the "Explanation Architecture" (e.g., Intro -> Surface Deception -> Definition Reveal -> Wordplay Mechanical Breakdown -> Final "Aha!" Moment).
+* [ ] **Task 14.2: Style Enrichment** - Extract specific linguistic flourishes from transcripts (e.g., how the speaker uses words like "dastardly," "equation," or "fair play").
+* [ ] **Task 14.3: Few-Shot Prompting** - Integrate the mapped architecture into `explainer_prompt.md` as few-shot examples.
+* [ ] **Task 14.4: Human-in-the-loop (HITL) Review** - Test the Explainer on a validated clue and verify it matches the reference video's tone.
 
-### Phase 14: Scaling (Optional)
+### Phase 15: Scaling (Optional)
 * [ ] Add keyword-based auto-detection to ingest_archive.py to categorize clues without a 'type' column.
 * [ ] Update WordPoolLoader to perform modular directory scanning for all *.json files in ./word_pools/.

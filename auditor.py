@@ -701,16 +701,25 @@ FAIL: [explanation] if double duty is detected"""
         # Try to validate words using enchant library
         try:
             import enchant
-            d = enchant.Dict("en_US")
+            
+            # Use request_dict for proper pyenchant syntax
+            try:
+                d = enchant.request_dict("en_GB")  # British English primary
+            except enchant.Error:
+                try:
+                    d = enchant.request_dict("en_US")  # US English fallback
+                except enchant.Error:
+                    raise ImportError("No enchant dictionary available")
+            
             non_words = []
             
             for word in words_to_check:
                 # Check if word is valid
                 if not d.check(word):
-                    # Also check British spelling as fallback
+                    # Try alternate spelling if British/US primary failed
                     try:
-                        d_gb = enchant.Dict("en_GB")
-                        if not d_gb.check(word):
+                        d_alt = enchant.request_dict("en_US" if "GB" in str(d) else "en_GB")
+                        if not d_alt.check(word):
                             non_words.append(word)
                     except:
                         non_words.append(word)
@@ -743,9 +752,10 @@ FAIL: [explanation] if double duty is detected"""
                 
                 return False, feedback
                 
-        except ImportError:
-            # Enchant library not available - try basic validation
-            logger.warning("enchant library not available for word validation. Install with: pip install pyenchant")
+        except (ImportError, AttributeError) as e:
+            # Enchant library not available or dictionary not available - use basic validation
+            logger.warning(f"enchant library not available for word validation: {e}")
+            logger.info("Falling back to basic pattern-based validation")
             
             # Fallback: Check for obvious gibberish patterns
             gibberish_patterns = [
@@ -753,12 +763,18 @@ FAIL: [explanation] if double duty is detected"""
                 r'[aeiou]{4,}',  # 4+ vowels in a row
             ]
             
+            # Also check for very short words (likely not real words if < 2 letters for Reversals)
             suspicious_words = []
             for word in words_to_check:
+                # Flag words with suspicious consonant/vowel patterns
                 for pattern in gibberish_patterns:
                     if re.search(pattern, word):
                         suspicious_words.append(word)
                         break
+                # For reversals, also flag if word is too short to be meaningful
+                if clue_type in ["reversal", "reverse"] and len(word) < 3:
+                    if word not in suspicious_words:
+                        suspicious_words.append(word)
             
             if suspicious_words:
                 feedback = (
