@@ -19,10 +19,8 @@ if sys.platform.startswith("win"):
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
 # Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-)
+# Note: logging.basicConfig() should only be called in the main entry point (main.py)
+# to avoid duplicate handlers when modules are imported
 logger = logging.getLogger(__name__)
 
 # Load environment variables from .env file

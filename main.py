@@ -14,7 +14,7 @@ import sys
 import os
 import json
 import logging
-from typing import List, Dict, Tuple
+from typing import List, Dict, Tuple, Optional
 from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor
 import time
@@ -538,7 +538,8 @@ def factory_run(
     batch_size: int = 10,
     max_concurrent: int = 5,
     output_file: str = "final_clues_output.json",
-    use_seed_words: bool = True
+    use_seed_words: bool = True,
+    required_types: Optional[List[str]] = None
 ) -> List[ClueResult]:
     """
     The "Clue Factory" - continuous loop that generates valid clues until target is met.
@@ -548,6 +549,7 @@ def factory_run(
     2. Processes batches in parallel with Mechanical-First strategy
     3. Continues until target_count PASSED clues are generated
     4. Saves only PASSED clues to output file
+    5. Optionally filters by required clue types
     
     Args:
         target_count: Number of PASSED clues needed (default: 20).
@@ -555,6 +557,8 @@ def factory_run(
         max_concurrent: Max concurrent API calls (default: 5).
         output_file: Output JSON file for passed clues (default: "final_clues_output.json").
         use_seed_words: If True, use seed_words.json; else use WordSelector (default: True).
+        required_types: List of required clue types (e.g., ["Charade", "Container"]).
+                       If None or empty, all types are allowed (default: None).
     
     Returns:
         List of all PASSED ClueResult objects.
@@ -584,6 +588,13 @@ def factory_run(
             print(f"Type distribution:")
             for clue_type, count in sorted(stats['type_distribution'].items()):
                 print(f"  {clue_type:20}: {count:3} words")
+            
+            # Log mechanism filter if active
+            if required_types:
+                logger.info(f"Batch Filter Active: Only processing {required_types}")
+                print(f"\n*** MECHANISM FILTER ACTIVE ***")
+                print(f"Only generating: {', '.join(required_types)}")
+                print()
         except (FileNotFoundError, Exception) as e:
             print(f"Failed to load seed_words.json: {e}")
             print("Falling back to WordSelector...")
@@ -625,19 +636,39 @@ def factory_run(
         
         if word_loader:
             # Use seed words with recommended types
-            for _ in range(current_batch_size):
-                seed_result = word_loader.get_random_seed(avoid_duplicates=True)
-                if seed_result:
-                    word_type_pairs.append(seed_result)
-                else:
-                    # Pool exhausted, reset and continue
-                    logger.warning("Word pool exhausted, resetting...")
-                    word_loader.reset_used()
+            if required_types:
+                # MECHANISM FILTER: Only select words matching required types
+                # Distribute evenly across required types
+                types_cycle = required_types * (current_batch_size // len(required_types) + 1)
+                
+                for clue_type in types_cycle[:current_batch_size]:
+                    seed_result = word_loader.get_specific_type_seed(clue_type, avoid_duplicates=True)
+                    if seed_result:
+                        word_type_pairs.append(seed_result)
+                    else:
+                        # No words available for this type, try resetting
+                        logger.warning(f"No unused words for type {clue_type}, resetting pool...")
+                        word_loader.reset_used()
+                        seed_result = word_loader.get_specific_type_seed(clue_type, avoid_duplicates=True)
+                        if seed_result:
+                            word_type_pairs.append(seed_result)
+            else:
+                # No filter: Use any type
+                for _ in range(current_batch_size):
                     seed_result = word_loader.get_random_seed(avoid_duplicates=True)
                     if seed_result:
                         word_type_pairs.append(seed_result)
+                    else:
+                        # Pool exhausted, reset and continue
+                        logger.warning("Word pool exhausted, resetting...")
+                        word_loader.reset_used()
+                        seed_result = word_loader.get_random_seed(avoid_duplicates=True)
+                        if seed_result:
+                            word_type_pairs.append(seed_result)
         else:
-            # Use WordSelector
+            # Use WordSelector (doesn't support type filtering yet)
+            if required_types:
+                logger.warning("WordSelector doesn't support type filtering. Use seed_words.json for mechanism filtering.")
             word_type_pairs = word_selector.select_words(current_batch_size, avoid_recent=True)
         
         if not word_type_pairs:
@@ -889,4 +920,23 @@ if __name__ == "__main__":
         target = input("\nHow many valid clues to generate? (default=20): ").strip()
         target_count = int(target) if target.isdigit() else 20
         
-        factory_run(target_count=target_count, batch_size=10, max_concurrent=5)
+        # Ask about mechanism filtering
+        print("\nMechanism Filter (optional):")
+        print("Available types: Anagram, Charade, Hidden Word, Container, Reversal, Homophone, Double Definition")
+        print("Examples: 'Charade,Container' or 'Anagram' or leave blank for all types")
+        filter_input = input("\nFilter by clue types (comma-separated, or Enter for all): ").strip()
+        
+        required_types = None
+        if filter_input:
+            # Parse comma-separated types
+            required_types = [t.strip() for t in filter_input.split(',') if t.strip()]
+            print(f"Filter activated: {', '.join(required_types)}")
+        else:
+            print("No filter: All clue types allowed")
+        
+        factory_run(
+            target_count=target_count,
+            batch_size=10,
+            max_concurrent=5,
+            required_types=required_types
+        )

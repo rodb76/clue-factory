@@ -10,7 +10,9 @@ import logging
 from typing import Dict, Tuple
 from difflib import SequenceMatcher
 
-logging.basicConfig(level=logging.INFO)
+# Configure logging
+# Note: logging.basicConfig() should only be called in the main entry point (main.py)
+# to avoid duplicate handlers when modules are imported
 logger = logging.getLogger(__name__)
 
 

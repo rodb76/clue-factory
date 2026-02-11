@@ -9,7 +9,9 @@ import logging
 import re
 from typing import Dict, Tuple, Optional
 
-logging.basicConfig(level=logging.INFO)
+# Configure logging
+# Note: logging.basicConfig() should only be called in the main entry point (main.py)
+# to avoid duplicate handlers when modules are imported
 logger = logging.getLogger(__name__)
 
 

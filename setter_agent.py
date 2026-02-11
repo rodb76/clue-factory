@@ -19,16 +19,113 @@ if sys.platform.startswith("win"):
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
 # Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-)
+# Note: logging.basicConfig() should only be called in the main entry point (main.py)
+# to avoid duplicate handlers when modules are imported
 logger = logging.getLogger(__name__)
 
 # Load environment variables from .env file
 load_dotenv()
 
 from portkey_ai import Portkey
+
+
+# PRIORITY CRYPTIC ABBREVIATIONS (Top 50 - Standard Crossword Fair)
+# These are widely recognized and defensible via Wikipedia/standard dictionaries
+PRIORITY_ABBREVIATIONS = {
+    # Roman Numerals (Universal)
+    "I": ["one"],
+    "V": ["five"],
+    "X": ["ten"],
+    "L": ["fifty"],
+    "C": ["hundred"],
+    "D": ["five hundred"],
+    "M": ["thousand"],
+    "XI": ["team", "eleven"],
+    
+    # Common Chemical Elements (Standard)
+    "H": ["hydrogen", "gas"],
+    "O": ["oxygen", "love", "duck", "nothing"],
+    "N": ["nitrogen", "north", "knight"],
+    "C": ["carbon"],
+    "AU": ["gold"],
+    "AG": ["silver"],
+    "FE": ["iron"],
+    "PB": ["lead"],
+    "CU": ["copper"],
+    
+    # Direction/Navigation (Universal)
+    "N": ["north"],
+    "S": ["south"],
+    "E": ["east"],
+    "W": ["west"],
+    "L": ["left"],
+    "R": ["right"],
+    
+    # Music/Sound (Standard)
+    "P": ["piano", "soft", "quiet"],
+    "F": ["forte", "loud"],
+    "PP": ["very soft"],
+    "FF": ["very loud"],
+    
+    # Chess Pieces (Standard)
+    "K": ["king"],
+    "Q": ["queen"],
+    "B": ["bishop"],
+    "N": ["knight"],
+    "R": ["rook"],
+    
+    # Titles/Professions (Common)
+    "DR": ["doctor"],
+    "MO": ["doctor", "medic"],
+    "MP": ["politician", "military police"],
+    "QC": ["lawyer", "silk"],
+    "PM": ["minister", "leader"],
+    
+    # Academic/Learning (Standard)
+    "L": ["learner", "student"],
+    "BA": ["graduate", "degree"],
+    "MA": ["master", "degree"],
+    "BSC": ["graduate"],
+    
+    # Units/Measures (Common)
+    "T": ["time", "ton"],
+    "M": ["metre", "mile"],
+    "G": ["gram"],
+    "OZ": ["ounce"],
+    "LB": ["pound"],
+    "S": ["second"],
+    "HR": ["hour"],
+    "MIN": ["minute"],
+    
+    # Common Single Letters (Universal)
+    "A": ["one", "ace", "article"],
+    "I": ["one", "eye"],
+    "O": ["nothing", "love"],
+    "U": ["university", "you"],
+    "V": ["very", "five"],
+    "Y": ["year", "unknown"],
+    "Z": ["sleep"],
+}
+
+# EXTENDED CRYPTIC ABBREVIATIONS (Less Common - Use Cautiously)
+# These are valid but less standard - prefer PRIORITY_ABBREVIATIONS when possible
+EXTENDED_ABBREVIATIONS = {
+    "EN": ["in", "nurse"],  # Less common, prefer "N" for "in"
+    "RE": ["about", "soldier"],
+    "RA": ["artist", "gunner"],
+    "GI": ["soldier", "american"],
+    "CA": ["about", "california"],
+    "CH": ["church", "switzerland"],
+    "LA": ["note", "los angeles"],
+    "TE": ["note"],
+    "DIT": ["signal"],  # Obscure - avoid
+    "DAH": ["signal"],  # Obscure - avoid
+}
+
+# COMBINED REFERENCE (for lookup)
+CRYPTIC_ABBREVIATIONS = {**PRIORITY_ABBREVIATIONS, **EXTENDED_ABBREVIATIONS}
+# COMBINED REFERENCE (for lookup)
+CRYPTIC_ABBREVIATIONS = {**PRIORITY_ABBREVIATIONS, **EXTENDED_ABBREVIATIONS}
 
 
 class SetterAgent:
@@ -154,18 +251,27 @@ Your job is to generate ONLY the mechanical wordplay components - NOT a full clu
 
 Focus on creating technically sound wordplay that will pass mechanical validation.
 
-FEW-SHOT EXAMPLES:
+FEW-SHOT EXAMPLES - GOLD STANDARD (Classic Ximenean Economy):
 
 Anagram Example:
-{"wordplay_parts": {"fodder": "listen", "indicator": "disturbed", "mechanism": "anagram of listen"}, "definition_hint": "quiet"}
+{"wordplay_parts": {"fodder": "dirty room", "indicator": "confused", "mechanism": "anagram of 'dirty room'"}, "definition_hint": "dormitory"}
+Classic Surface: "Confused dirty room (9)" → DORMITORY
+Note: Perfect 1:1 ratio - no filler words needed.
 
 Hidden Word Example:
-{"wordplay_parts": {"fodder": "modern unit", "indicator": "part of", "mechanism": "hidden in 'moderN UNIT'"}, "definition_hint": "single item"}
+{"wordplay_parts": {"fodder": "illusionist", "indicator": "disguises", "mechanism": "hidden in 'il[LUSI]onist'"}, "definition_hint": "dead giveaway"}
+Classic Surface: "How illusionist disguises a dead giveaway? (4)" → LUSI (illustrative)
+Note: "disguises" serves as both indicator AND thematic anchor.
 
 Container Example:
 {"wordplay_parts": {"outer": "PAT", "inner": "IN", "indicator": "grips", "mechanism": "IN inside PAT"}, "definition_hint": "To apply color", "target_answer": "PAINT"}
 
-Follow these examples for technically sound wordplay."""
+Reversal Example:
+{"wordplay_parts": {"fodder": "lager", "indicator": "returned", "mechanism": "reverse of lager"}, "definition_hint": "majestic"}
+Classic Surface: "Majestic lager returned (5)" → REGAL
+Note: Zero filler - surface implies drink being sent back, cryptic reading reverses letters.
+
+Follow these Gold Standard examples: build with ONLY definition + fodder + indicator, then add words ONLY if thematically necessary."""
 
         user_prompt = f"""Generate the wordplay components for answer "{answer.upper()}" using type "{clue_type}".{retry_context}
 
@@ -184,8 +290,17 @@ CRITICAL RULES BY TYPE:
 - Anagram: fodder must contain EXACTLY the same letters as {answer.upper()}
 - Hidden Word: MANDATORY: You must verify the spelling by placing brackets around the hidden answer in your 'mechanism' string. Example for 'AORTA': 'found in r[ADIO ORTA]rio'. If the letters are not consecutive, it is a FAIL. The fodder must be real words/phrases. Verify character-by-character: {answer.upper()[0]}, {answer.upper()[1]}, {answer.upper()[2] if len(answer) > 2 else ''}, etc.
 - Charade: parts must CONCATENATE to exactly {answer.upper()}
-- Container: outer word must CONTAIN inner word to make {answer.upper()}
-- Reversal: word reversed must equal {answer.upper()}"""
+- Container: outer word must CONTAIN inner word to make {answer.upper()}. BOTH outer and inner words MUST be real English dictionary words (no gibberish like 'nettab').
+- Reversal: The fodder word reversed must equal {answer.upper()}. CRITICAL: The fodder MUST be a real English dictionary word BEFORE reversal (e.g., 'lager' → REGAL is valid, but 'amhtsa' → ASTHMA is FORBIDDEN gibberish). If no real word reverses to form {answer.upper()}, you MUST pivot to a different mechanism (Charade, Hidden Word, etc.).
+
+REAL-WORD DICTIONARY CONSTRAINT:
+- For Reversals and Containers, every piece of fodder must be a valid English word found in a standard dictionary
+- If reversing the answer produces a non-word (e.g., ASTHMA → 'amhtsa'), you MUST choose a different clue type
+- Examples:
+  * GOOD: 'lager' reversed = REGAL (both are real words)
+  * GOOD: 'desserts' reversed = STRESSED (both are real words)
+  * BAD: 'amhtsa' reversed = ASTHMA (amhtsa is gibberish - MUST use different mechanism)
+  * BAD: 'nettab' reversed = BATTEN (nettab is gibberish - MUST use different mechanism)"""
 
         try:
             logger.info(f"Generating wordplay for '{answer}' (type: {clue_type}) [Model: LOGIC]")
@@ -237,8 +352,47 @@ CRITICAL RULES BY TYPE:
         wordplay_parts = wordplay_data.get("wordplay_parts", {})
         definition_hint = wordplay_data.get("definition_hint", "")
         
-        system_prompt = """You are a Ximenean cryptic crossword surface writer.
-You receive validated wordplay components and create a smooth, natural-reading clue."""
+        system_prompt = """You are a Ximenean cryptic crossword surface writer following the 'Minimalist Lie' principle.
+You receive validated wordplay components and create a deceptive, economical clue.
+
+THE MINIMALIST LIE APPROACH:
+1. Start with ONLY: Definition + Fodder + Indicator
+2. Add words ONLY if required for a plausible, deceptive narrative (Thematic Necessity Test)
+3. Every word must be justifiable in the cryptic reading
+
+CRITICAL RULES:
+1. STRICTLY use the exact fodder provided - NO synonyms allowed
+2. Avoid literal connectors like 'gives', 'plus', 'becomes' - prefer grammatical links ('s, -ing)
+3. Grammatical Integrity: The surface must read as coherent English
+4. Prioritize economy over elaboration - fewer words = better clue
+
+THE NO-GIBBERISH RULE (MANDATORY):
+- NEVER include standalone letters or non-word fragments in the surface (e.g., "with en, treat, y" is FORBIDDEN)
+- Single letters MUST be masked using PRIORITY cryptic abbreviations from TOP 50 list:
+  * Roman numerals: I=one, V=five, X=ten, L=fifty, C=hundred, M=thousand
+  * Elements: H=hydrogen/gas, O=oxygen/love, N=nitrogen/north, AU=gold, FE=iron
+  * Directions: N=north, S=south, E=east, W=west, L=left, R=right
+  * Music: P=piano/soft, F=forte/loud
+  * Chess: K=king, Q=queen, B=bishop, N=knight
+  * Titles: DR=doctor, MP=politician, MO=medic
+  * Units: T=time/ton, M=metre, S=second, HR=hour
+
+NO NON-WORDS AS FODDER (CRITICAL - DICTIONARY VALIDATION):
+- Every piece of fodder MUST be a real English word found in standard dictionaries
+- For reversals: Check BOTH directions - fodder word must be real BEFORE reversal
+  * VALID: "lager" (real word) reversed = REGAL (real word) ✓
+  * INVALID: "amhtsa" (gibberish) reversed = ASTHMA ✗
+- For containers: BOTH outer and inner words must be dictionary-valid
+  * VALID: IN inside PAT = PAINT (all real words) ✓
+  * INVALID: "nettab" containing EN = BATTEN ✗
+- MANDATORY: If reversal of answer produces gibberish, pivot to Charade/Hidden Word/Anagram
+- Mechanical Fair Play: Every fodder word must be defensible via standard English dictionaries (Oxford, Merriam-Webster, etc.)
+
+NARRATIVE MASKING:
+- Choose substitutions that fit your thematic story
+- Example: If solving chess clue, use "knight" for N, "king" for K
+- Example: If geographic theme, use "north" for N, "east" for E
+- The surface MUST read as a plausible English sentence, NOT a mechanical listing"""
 
         user_prompt = f"""Create a complete cryptic clue using these VALIDATED wordplay components:
 
@@ -256,13 +410,29 @@ Return ONLY JSON with:
     "explanation": "Full breakdown"
 }}
 
-Requirements:
+MINIMALIST LIE Construction Process:
+1. Start with: "{definition_hint}" + "{wordplay_parts.get('fodder')}" + "{wordplay_parts.get('indicator')}"
+2. Test: Does this already form a plausible sentence?
+3. If yes: STOP. You are done.
+4. If no: Add ONLY the minimum words needed for deceptive narrative
+
+STRICT Requirements:
+- MANDATORY: Use the EXACT fodder words '{wordplay_parts.get('fodder')}' in the clue (no synonyms)
 - Include the definition and ALL wordplay components naturally
 - Make it read like a coherent English sentence
 - Use ONLY horizontal indicators (no "rising", "up", "over", etc.)
 - Don't explain the wordplay in the clue itself
+- AVOID literal connectors ('gives', 'plus', 'becomes') - prefer grammatical links like possessives ('s)
+- Aim for zero additional words; maximum 1-2 if thematically essential
 - CRITICAL: You MUST use a synonym for the definition_hint '{definition_hint}' in the surface reading
-- STRICTLY FORBIDDEN: You CANNOT use the word '{answer.upper()}' itself anywhere in the clue text"""
+- STRICTLY FORBIDDEN: You CANNOT use the word '{answer.upper()}' itself anywhere in the clue text
+
+NO-GIBBERISH ENFORCEMENT:
+- If fodder contains single letters (e.g., EN, Y, N), you MUST substitute with PRIORITY abbreviations from TOP 50
+- FORBIDDEN: "with en, treat, y" or "found in n, e, w"
+- REQUIRED: "from nurse, treat, year" or "within north, east, west"
+- Check: Every token in your clue must be a real English word or standard phrase
+- CRITICAL: No non-word fodder allowed - if "NETTAB" is needed, reject and use different mechanism"""
 
         try:
             logger.info(f"Generating surface for '{answer}' [Model: SURFACE]")

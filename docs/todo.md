@@ -95,14 +95,65 @@
 
 * [x] Create a final agent to produce user-friendly "Hint" (oblique) and "Explanation" (full breakdown) outputs.
 
+### Phase 7: Strict Ximenean Logic & Cryptic Grammar
 
-### Phase 7: Explanations & Style Extension
+* [x] Implement fodder presence check (no synonyms for fodder)
+* [x] Implement filler words audit (max 2 connectors)
+* [x] Implement indicator grammar check (imperative not indicative)
+* [x] Update setter prompts for stricter surface generation
+* [x] Add Reversal example demonstrating simpler style
+
+### Phase 8: Minimalist Lie Logic (Classic Ximenean Economy)
+
+* [x] Update setter with "Minimalist Mandate" (def + fodder + indicator first)
+* [x] Add Gold Standard examples (DORMITORY, REGAL, etc.)
+* [x] Emphasize Thematic Necessity Test for additional words
+* [x] Refine auditor filler check with MINIMALIST LIE messaging
+* [x] Make grammar check position-aware and type-aware
+* [x] Remove imperative-capable words from noun indicators list
+* [x] Create comprehensive test suite for Minimalist Lie logic
+
+### Phase 9: Advanced Narrative Masking & Thematic Logic
+
+* [x] Add comprehensive CRYPTIC_ABBREVIATIONS reference (60+ substitutions)
+* [x] Implement NO-GIBBERISH RULE in setter prompts
+* [x] Add narrative masking guidelines and thematic coherence
+* [x] Create _check_narrative_integrity() method in auditor
+* [x] Detect literal letter listings with regex patterns
+* [x] Warn about suspicious unmasked tokens
+* [x] Update AuditResult with narrative_integrity_check field
+* [x] Integrate 7th check into fairness scoring
+* [x] Create comprehensive test suite for narrative masking
+
+
+### Phase 10: Metric Hardening
+* [x] Update `auditor.py` to calculate `ximenean_score` (0.0-1.0) based on filler and indicator grammar.
+* [x] Implement `difficulty_level` (1-5) using definition obliqueness as a primary weight.
+* [x] Add `narrative_fidelity` (%) to quantify surface naturalness.
+* [x] Integrate metrics into AuditResult dataclass and to_dict() serialization.
+* [x] Update audit logging to display all three metrics.
+* [x] Create comprehensive test suite for metric validation.
+
+
+### Phase 11: Workshop Agent Development
+* [x] Create `workshop.py` to ingest `final_clues_output.json`.
+* [x] Program the script to suggest "Alternative Mechanisms" for words with low Narrative scores.
+* [x] Add a "Word Swap" feature to suggest better-fitting answer words for high-quality surfaces.
+* [x] Output to a new file (called `workshopped_clues.json`).
+* [x] Implement quality thresholds (excellent clues preserved as-is).
+* [x] Create comprehensive test suite for workshop functionality.
+
+
+### Phase 12: Integration (optional)
+* Ensure the `main_orchestrator` can optionally pipe clues through the Workshop before final JSON saving.
+
+### Phase 13: Explanations & Style Extension
 * [ ] Create YouTube transcript extraction script.
-* [ ] **Task 7.1: Structural Mapping** - Use an LLM to analyze `transcript_JAGbz18gYHk.txt` and identify the "Explanation Architecture" (e.g., Intro -> Surface Deception -> Definition Reveal -> Wordplay Mechanical Breakdown -> Final "Aha!" Moment).
-* [ ] **Task 7.2: Style Enrichment** - Extract specific linguistic flourishes from transcripts (e.g., how the speaker uses words like "dastardly," "equation," or "fair play").
-* [ ] **Task 7.3: Few-Shot Prompting** - Integrate the mapped architecture into `explainer_prompt.md` as few-shot examples.
-* [ ] **Task 7.4: Human-in-the-loop (HITL) Review** - Test the Explainer on a validated clue and verify it matches the reference video's tone.
+* [ ] **Task 13.1: Structural Mapping** - Use an LLM to analyze `transcript_JAGbz18gYHk.txt` and identify the "Explanation Architecture" (e.g., Intro -> Surface Deception -> Definition Reveal -> Wordplay Mechanical Breakdown -> Final "Aha!" Moment).
+* [ ] **Task 13.2: Style Enrichment** - Extract specific linguistic flourishes from transcripts (e.g., how the speaker uses words like "dastardly," "equation," or "fair play").
+* [ ] **Task 13.3: Few-Shot Prompting** - Integrate the mapped architecture into `explainer_prompt.md` as few-shot examples.
+* [ ] **Task 13.4: Human-in-the-loop (HITL) Review** - Test the Explainer on a validated clue and verify it matches the reference video's tone.
 
-### Phase 8: Scaling (Optional)
+### Phase 14: Scaling (Optional)
 * [ ] Add keyword-based auto-detection to ingest_archive.py to categorize clues without a 'type' column.
 * [ ] Update WordPoolLoader to perform modular directory scanning for all *.json files in ./word_pools/.

@@ -1,0 +1,78 @@
+{
+  "metadata": {
+    "workshop_date": "2026-02-11T15:50:18.968164",
+    "input_file": "final_clues_output.json",
+    "original_metadata": {
+      "generated_at": "2026-02-11T15:26:48.209242",
+      "target_count": 5,
+      "total_attempts": 22,
+      "success_rate": "22.7%",
+      "total_time_seconds": 414.2789273262024,
+      "batches_processed": 6
+    },
+    "statistics": {
+      "total_clues": 5,
+      "kept_as_is": 5,
+      "alternative_mechanism_suggested": 0,
+      "word_swap_suggested": 0,
+      "improvement_rate": "0.0%"
+    }
+  },
+  "suggestions": [
+    {
+      "original_word": "DISPUTE",
+      "original_clue": "Argument or contest",
+      "original_type": "Double Definition",
+      "suggestion_type": "keep_as_is",
+      "reason": "Excellent quality - narrative: 100%, ximenean: 1.00",
+      "scores": {
+        "narrative_fidelity": 100.0,
+        "ximenean_score": 1.0
+      }
+    },
+    {
+      "original_word": "TENDER",
+      "original_clue": "Soft boat attending ship",
+      "original_type": "Double Definition",
+      "suggestion_type": "keep_as_is",
+      "reason": "Excellent quality - narrative: 100%, ximenean: 1.00",
+      "scores": {
+        "narrative_fidelity": 100.0,
+        "ximenean_score": 1.0
+      }
+    },
+    {
+      "original_word": "RAISE",
+      "original_clue": "Elevate rays we hear",
+      "original_type": "Homophone",
+      "suggestion_type": "keep_as_is",
+      "reason": "Excellent quality - narrative: 100%, ximenean: 1.00",
+      "scores": {
+        "narrative_fidelity": 100.0,
+        "ximenean_score": 1.0
+      }
+    },
+    {
+      "original_word": "SLYLY",
+      "original_clue": "Cunningly concealed in previously lying",
+      "original_type": "Hidden Word",
+      "suggestion_type": "keep_as_is",
+      "reason": "Excellent quality - narrative: 100%, ximenean: 1.00",
+      "scores": {
+        "narrative_fidelity": 100.0,
+        "ximenean_score": 1.0
+      }
+    },
+    {
+      "original_word": "POLISH",
+      "original_clue": "Refine a nationality",
+      "original_type": "Double Definition",
+      "suggestion_type": "keep_as_is",
+      "reason": "Excellent quality - narrative: 100%, ximenean: 1.00",
+      "scores": {
+        "narrative_fidelity": 100.0,
+        "ximenean_score": 1.0
+      }
+    }
+  ]
+}

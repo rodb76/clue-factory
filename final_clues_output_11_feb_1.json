@@ -1,0 +1,267 @@
+{
+  "metadata": {
+    "generated_at": "2026-02-11T15:26:48.209242",
+    "target_count": 5,
+    "total_attempts": 22,
+    "success_rate": "22.7%",
+    "total_time_seconds": 414.2789273262024,
+    "batches_processed": 6
+  },
+  "clues": [
+    {
+      "word": "DISPUTE",
+      "clue_type": "Double Definition",
+      "passed": true,
+      "clue": "Argument or contest",
+      "definition": "Argument or contest",
+      "explanation": {
+        "hints": {
+          "indicators": "Notice how this clue has no sneaky indicator words like 'hidden', 'anagram', or 'mixed'? That's your signal we're dealing with a Double Definition clue. The key here is that the clue simply presents two different meanings of the same word, side by side.",
+          "fodder": "With a Double Definition, there's no 'fodder' to manipulate in the traditional sense - no letters to rearrange or hide. Instead, we're working with a single word that must satisfy both meanings given in the clue. The word itself is our raw material.",
+          "definition": "Our definition here is 'Argument or contest' - and notice the 'or' in the middle? That's doing heavy lifting! We need one word that can mean both 'Argument' AND 'contest'. Think about a word where these two meanings comfortably coexist. What word could describe both a heated disagreement and a competitive match?"
+        },
+        "full_breakdown": "Let's walk through this straightforward but elegant clue! With Double Definition clues, there's no cryptic wordplay mechanism - just pure vocabulary. The clue gives us 'Argument or contest' as our definition. The word DISPUTE is beautifully dual-natured: it works perfectly as 'an argument' (a disagreement between people) AND as 'a contest' (something hotly competed over or debated). The setter is banking on you thinking of just one meaning at first, perhaps 'argument', but the answer seamlessly covers both interpretations. This is why Double Definition clues feel so satisfying once they click - they showcase how rich and flexible language can be, with one elegant word doing double duty to match both parts of the clue!"
+      },
+      "wordplay_parts": {
+        "type": "Double Definition",
+        "fodder": "N/A",
+        "indicator": "N/A",
+        "mechanism": "Two definitions: 'argument' and 'contest'"
+      },
+      "mechanical_valid": true,
+      "solver_answer": "DISPUTE",
+      "solver_reasoning": "This is a double definition clue. Both 'Argument' and 'contest' can define the same 7-letter word. An argument is a DISPUTE, and a contest is also a DISPUTE (something disputed or competed for).",
+      "solver_confidence": "High",
+      "referee_feedback": "Exact match: Solver correctly identified the answer.",
+      "similarity": 1.0,
+      "audit": {
+        "passed": true,
+        "direction_check": true,
+        "direction_feedback": "[PASS] No down-only indicators detected in indicator field.",
+        "double_duty_check": true,
+        "double_duty_feedback": "[PASS] No double duty detected.\nPASS: This is a double definition clue where \"Argument\" serves as one definition and \"contest\" serves as another definition. Neither word functions as a wordplay indicator - they are simply two separate synonyms of the answer. There is no mechanical wordplay operation occurring, so no word is being used in double duty as both an indicator and the definition. This is a standard double definition construction.",
+        "indicator_fairness_check": true,
+        "indicator_fairness_feedback": "[PASS] Indicator appears fair.",
+        "fodder_presence_check": true,
+        "fodder_presence_feedback": "[PASS] All fodder words are physically present in the clue.",
+        "filler_check": true,
+        "filler_feedback": "[PASS] Minimalist economy achieved - all words serve a cryptic purpose.",
+        "indicator_grammar_check": true,
+        "indicator_grammar_feedback": "[PASS] Cannot determine indicator/fodder positions.",
+        "narrative_integrity_check": true,
+        "narrative_integrity_feedback": "[PASS] Surface reading appears natural - no literal letter listings detected.",
+        "obscurity_check": true,
+        "obscurity_feedback": "[PASS] All abbreviations are standard Top 50 priority types.",
+        "fairness_score": 1.0,
+        "refinement_suggestion": null,
+        "ximenean_score": 1.0,
+        "difficulty_level": 1,
+        "narrative_fidelity": 100.0
+      }
+    },
+    {
+      "word": "TENDER",
+      "clue_type": "Double Definition",
+      "passed": true,
+      "clue": "Soft boat attending ship",
+      "definition": "Soft (gentle) / boat attending ship (tender)",
+      "explanation": {
+        "hints": {
+          "indicators": "Notice how this clue has no traditional indicator word like 'anagram' or 'hidden'? That's your first clue that we're dealing with a Double Definition! The key here is that the entire clue simply offers you two different meanings for the same word. No wordplay machinery at all—just two separate definitions waiting to click into place.",
+          "fodder": "Watch out—in a Double Definition clue, there's no 'fodder' to manipulate in the traditional sense. Instead, we're looking for a single word that genuinely works in two completely different contexts. The word itself is doing all the work, and we just need to recognize both meanings it can carry.",
+          "definition": "Our definition here is 'Soft (gentle) / boat attending ship (tender)' and this is where the elegance lives. The clue is essentially saying: 'Find a word meaning soft/gentle AND also meaning a boat attending a ship.' Both definitions are equally valid and real—that's the beauty of double definitions!"
+        },
+        "full_breakdown": "Let's walk through this wonderful clue together! With a Double Definition, the crossword setter is playing with ambiguity—not hiding letters or rearranging them, just finding a word with genuine double meaning. 'Soft boat attending ship' might initially sound like you need to combine words or decode something, but here's the trick: TENDER works perfectly as it is. In one sense, 'soft' or 'gentle' describes something TENDER (like tender feelings or tender skin). In another sense, a TENDER is a literal boat—specifically a small vessel that attends to a larger ship, supplying it or ferrying crew. The clue is wonderfully constructed because the surface reading (about a soft boat) almost makes sense, yet both meanings are completely legitimate dictionary definitions. That's the elegance of the double definition: no anagrams, no hidden words, no indicators—just one beautiful word doing double duty!"
+      },
+      "wordplay_parts": {
+        "type": "Double Definition",
+        "fodder": "N/A",
+        "indicator": "N/A",
+        "mechanism": "Two definitions: 'gentle' and 'boat supplying ship'"
+      },
+      "mechanical_valid": true,
+      "solver_answer": "TENDER",
+      "solver_reasoning": "Definition: 'Soft'. Wordplay: P (piano=soft) + RESENT (boat attending ship, where 'resent' means to attend again or be present). P + RESENT = PRESENT. Wait - checking: TENDER (soft) = P (soft in music) + TENDER (boat attending ship). No - PLIANT = P + LIANT... Actually: TENDER boat attends ships, and tender means soft.",
+      "solver_confidence": "High",
+      "referee_feedback": "Exact match: Solver correctly identified the answer.",
+      "similarity": 1.0,
+      "audit": {
+        "passed": true,
+        "direction_check": true,
+        "direction_feedback": "[PASS] No down-only indicators detected in indicator field.",
+        "double_duty_check": true,
+        "double_duty_feedback": "[PASS] No double duty detected.\nPASS: This is a double definition clue where \"Soft\" provides one definition (gentle) and \"boat attending ship\" provides the second definition (tender). No words are functioning as wordplay indicators - each component simply offers a different meaning of the answer TENDER. Since there are no mechanical instructions being used, there is no possibility of double duty violation.",
+        "indicator_fairness_check": true,
+        "indicator_fairness_feedback": "[PASS] Indicator appears fair.",
+        "fodder_presence_check": true,
+        "fodder_presence_feedback": "[PASS] All fodder words are physically present in the clue.",
+        "filler_check": true,
+        "filler_feedback": "[PASS] Minimalist economy achieved - all words serve a cryptic purpose.",
+        "indicator_grammar_check": true,
+        "indicator_grammar_feedback": "[PASS] Cannot determine indicator/fodder positions.",
+        "narrative_integrity_check": true,
+        "narrative_integrity_feedback": "[PASS] Surface reading appears natural - no literal letter listings detected.",
+        "obscurity_check": true,
+        "obscurity_feedback": "[PASS] All abbreviations are standard Top 50 priority types.",
+        "fairness_score": 1.0,
+        "refinement_suggestion": null,
+        "ximenean_score": 1.0,
+        "difficulty_level": 3,
+        "narrative_fidelity": 100.0
+      }
+    },
+    {
+      "word": "RAISE",
+      "clue_type": "Homophone",
+      "passed": true,
+      "clue": "Elevate rays we hear",
+      "definition": "Elevate",
+      "explanation": {
+        "hints": {
+          "indicators": "Notice how 'we hear' is your signal here - that's a homophone indicator! When you see phrases like 'we hear', 'sounds like', or 'by the sound of it', the clue is telling you to find a word that SOUNDS like something, rather than looks like it. Homophones are all about the audio trick!",
+          "fodder": "The key here is 'rays' - that's your raw material. In a homophone clue, you don't need to rearrange these letters or hide them anywhere. Instead, you're looking for a different word that sounds identical when spoken aloud. What does 'rays' sound like when you say it out loud?",
+          "definition": "Our definition here is 'Elevate' - so we're looking for a word that means 'Elevate'. Once you figure out what word sounds like 'rays', check whether that word can mean 'Elevate'. If it does, you've found your answer!"
+        },
+        "full_breakdown": "Let's work through this delightful homophone clue together! Start with 'we hear' - that's your homophone indicator flashing a bright signal. It's telling you: 'Don't look at the spelling of what comes next, listen to how it sounds!' Now look at 'rays' - the fodder. When you pronounce 'rays' aloud, it sounds exactly like another word: R-A-I-S-E. And here's the beautiful part - that word RAISE is precisely what our definition 'Elevate' means! So the clue is playfully presenting us with a homophone pair: we read 'rays' but we're meant to hear 'raise'. The surface meaning talks about light rays, but the wordplay reveals a verb that perfectly matches 'Elevate'. That's the magic of homophones - they exploit how our ears and eyes can be fooled in wonderfully different ways!"
+      },
+      "wordplay_parts": {
+        "type": "Homophone",
+        "fodder": "rays",
+        "indicator": "we hear",
+        "mechanism": "sounds like 'rays'"
+      },
+      "mechanical_valid": true,
+      "solver_answer": "RAISE",
+      "solver_reasoning": "Definition: 'Elevate'. Indicator: 'we hear' signals homophone. 'Rays' sounds like 'raise'. RAISE means elevate. Answer matches definition and wordplay perfectly.",
+      "solver_confidence": "High",
+      "referee_feedback": "Exact match: Solver correctly identified the answer.",
+      "similarity": 1.0,
+      "audit": {
+        "passed": true,
+        "direction_check": true,
+        "direction_feedback": "[PASS] No down-only indicators detected in indicator field.",
+        "double_duty_check": true,
+        "double_duty_feedback": "[PASS] No double duty detected.\nPASS: [explanation]\n\n\"Elevate\" is the definition (a synonym of the answer RAISE).\n\"we hear\" is the homophone indicator (the mechanical instruction).\n\"rays\" is the wordplay fodder (what sounds like the answer).\n\nThese are three separate elements. The word \"Elevate\" serves only as the definition and is not being used as a mechanical indicator. The homophone indicator \"we hear\" is separate from the definition. There is no single word performing double duty as both the definition and a wordplay indicator.",
+        "indicator_fairness_check": true,
+        "indicator_fairness_feedback": "[PASS] Indicator appears fair.",
+        "fodder_presence_check": true,
+        "fodder_presence_feedback": "[PASS] All fodder words are physically present in the clue.",
+        "filler_check": true,
+        "filler_feedback": "[PASS] Minimalist economy achieved - all words serve a cryptic purpose.",
+        "indicator_grammar_check": true,
+        "indicator_grammar_feedback": "[PASS] Indicator grammar is correct (imperative form).",
+        "narrative_integrity_check": true,
+        "narrative_integrity_feedback": "[PASS] Surface reading appears natural - no literal letter listings detected.",
+        "obscurity_check": true,
+        "obscurity_feedback": "[PASS] All abbreviations are standard Top 50 priority types.",
+        "fairness_score": 1.0,
+        "refinement_suggestion": null,
+        "ximenean_score": 1.0,
+        "difficulty_level": 1,
+        "narrative_fidelity": 100.0
+      }
+    },
+    {
+      "word": "SLYLY",
+      "clue_type": "Hidden Word",
+      "passed": true,
+      "clue": "Cunningly concealed in previously lying",
+      "definition": "Cunningly",
+      "explanation": {
+        "hints": {
+          "indicators": "Notice the phrase 'concealed in' - that's your hidden word indicator right there! It's telling you the answer is tucked away inside the nearby words, just waiting to be discovered. Hidden word clues are like word searches embedded in a sentence.",
+          "fodder": "Your raw material here is 'previously lying'. This is the phrase where our answer is hiding. The key thing to remember is that in hidden word clues, the letters appear consecutively - you just need to spot where they line up within these words.",
+          "definition": "Our definition here is 'Cunningly' - and that's the meaning our answer needs to match. When you find the hidden word, it should be a synonym for this exact definition from the clue."
+        },
+        "full_breakdown": "Let's work through this together! First, 'concealed in' is our indicator - it's signaling that we need to find a hidden word tucked inside the fodder. Now look at 'previously lying' as our hunting ground. Watch what happens if we examine the letters carefully: 'previou**SLY LY**ing' - can you see it? S-L-Y-L-Y appears consecutively within those two words! And here's the beautiful part: SLYLY is exactly what 'Cunningly' means - it's an adverb describing doing something in a cunning, secretive way. The clue reads naturally on the surface (talking about someone previously lying), but underneath, it's hiding the answer that defines that very behavior. That's cryptic crossword magic!"
+      },
+      "wordplay_parts": {
+        "type": "Hidden Word",
+        "fodder": "previously lying",
+        "indicator": "concealed in",
+        "mechanism": "hidden in 'previou[SLY LY]ing'"
+      },
+      "mechanical_valid": true,
+      "solver_answer": "SLYLY",
+      "solver_reasoning": "MANDATORY STEP 0: Checking for hidden word in 'previously lying'. The letters 'iously' (5 letters) are hidden consecutively in 'prevIOUSLY lying'. This matches the enumeration (5). 'Cunningly concealed in' indicates a hidden word. The definition is the hidden word itself in this &lit construction.",
+      "solver_confidence": "High",
+      "referee_feedback": "Exact match: Solver correctly identified the answer.",
+      "similarity": 1.0,
+      "audit": {
+        "passed": true,
+        "direction_check": true,
+        "direction_feedback": "[PASS] No down-only indicators detected in indicator field.",
+        "double_duty_check": true,
+        "double_duty_feedback": "[PASS] No double duty detected.\nPASS: [explanation]\n\n\"Cunningly\" is the definition (a synonym for \"slyly\").\n\"Concealed in\" is the hidden word indicator (a two-word phrase).\n\"Previously lying\" provides the wordplay fodder.\n\nThese are three separate elements. The word \"concealed\" is part of the indicator phrase but is NOT the definition. The definition is \"cunningly,\" which is a different word entirely. Since no single word is serving both as the mechanical indicator AND as the definition, there is no Double Duty violation.",
+        "indicator_fairness_check": true,
+        "indicator_fairness_feedback": "[PASS] Indicator appears fair.",
+        "fodder_presence_check": true,
+        "fodder_presence_feedback": "[PASS] All fodder words are physically present in the clue.",
+        "filler_check": true,
+        "filler_feedback": "[PASS] Minimalist economy achieved - all words serve a cryptic purpose.",
+        "indicator_grammar_check": true,
+        "indicator_grammar_feedback": "[PASS] Indicator 'concealed in' uses past participle in attributive position (before fodder). This is acceptable classic Ximenean style.",
+        "narrative_integrity_check": true,
+        "narrative_integrity_feedback": "[PASS] Surface reading appears natural - no literal letter listings detected.",
+        "obscurity_check": true,
+        "obscurity_feedback": "[PASS] All abbreviations are standard Top 50 priority types.",
+        "fairness_score": 1.0,
+        "refinement_suggestion": null,
+        "ximenean_score": 1.0,
+        "difficulty_level": 2,
+        "narrative_fidelity": 100.0
+      }
+    },
+    {
+      "word": "POLISH",
+      "clue_type": "Double Definition",
+      "passed": true,
+      "clue": "Refine a nationality",
+      "definition": "refine / nationality",
+      "explanation": {
+        "hints": {
+          "indicators": "Notice how there's no anagram indicator, no hidden word signal, no deletion marker here. This clue works differently - it's a double definition clue, which means the entire clue is just two different meanings pointing to the same answer. Think of it like saying 'a young dog' and 'to tail someone' - both lead to FOLLOW. The clue itself IS the definition!",
+          "fodder": "Here's where double definitions are clever - there's no 'fodder' to manipulate in the traditional sense. You're not anagramming letters or hiding words. Instead, you're looking for a single word that can genuinely work as both definitions simultaneously. The word itself IS the payoff.",
+          "definition": "Our definition here is 'refine / nationality'. This is the whole clue! You need to find one word that can mean both 'refine' AND 'nationality'. These aren't hints to separate parts - they're two completely different meanings that the same word captures."
+        },
+        "full_breakdown": "Let's work through this beautifully simple clue! Double definition clues are refreshingly honest - what you see is what you get. We need one word that genuinely works as both 'refine / nationality'. Think about actions you can do to something to improve it - you might POLISH a shoe or a surface, making it shinier and better. Now think about where people come from or their heritage - and suddenly POLISH also refers to someone or something from Poland! That's the elegant trick here. POLISH perfectly straddles both meanings: it's a verb meaning to refine or improve, AND it's an adjective/noun for the nationality or language of Poland. The clue sneakily presents both definitions as if they're just descriptive clues, but they're actually pointing to one beautiful word that contains both concepts. No anagrams, no wordplay machinery - just two genuine definitions joined by that slash, creating a satisfying 'aha!' moment."
+      },
+      "wordplay_parts": {
+        "type": "Double Definition",
+        "fodder": "N/A",
+        "indicator": "N/A",
+        "mechanism": "Two definitions: 'refine' and 'nationality'"
+      },
+      "mechanical_valid": true,
+      "solver_answer": "POLISH",
+      "solver_reasoning": "Definition: 'Refine'. Wordplay: 'a nationality' is an anagram indicator. POLISH is both a nationality (Polish person) and means to refine/make smooth. This is a double definition clue where both meanings apply.",
+      "solver_confidence": "High",
+      "referee_feedback": "Exact match: Solver correctly identified the answer.",
+      "similarity": 1.0,
+      "audit": {
+        "passed": true,
+        "direction_check": true,
+        "direction_feedback": "[PASS] No down-only indicators detected in indicator field.",
+        "double_duty_check": true,
+        "double_duty_feedback": "[PASS] No double duty detected.\nPASS: This is a double definition clue where \"refine\" serves as one definition and \"nationality\" serves as the other definition. Neither word functions as a wordplay indicator - there is no mechanical instruction present in this clue. The two definitions simply point to the answer from different semantic angles. Since no word is being used both as an indicator AND as the definition, there is no double duty violation.",
+        "indicator_fairness_check": true,
+        "indicator_fairness_feedback": "[PASS] Indicator appears fair.",
+        "fodder_presence_check": true,
+        "fodder_presence_feedback": "[PASS] All fodder words are physically present in the clue.",
+        "filler_check": true,
+        "filler_feedback": "[PASS] Minimalist economy achieved - all words serve a cryptic purpose.",
+        "indicator_grammar_check": true,
+        "indicator_grammar_feedback": "[PASS] Cannot determine indicator/fodder positions.",
+        "narrative_integrity_check": true,
+        "narrative_integrity_feedback": "[PASS] Surface reading appears natural - no literal letter listings detected.",
+        "obscurity_check": true,
+        "obscurity_feedback": "[PASS] All abbreviations are standard Top 50 priority types.",
+        "fairness_score": 1.0,
+        "refinement_suggestion": null,
+        "ximenean_score": 1.0,
+        "difficulty_level": 3,
+        "narrative_fidelity": 100.0
+      }
+    }
+  ]
+}

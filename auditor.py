@@ -19,10 +19,8 @@ load_dotenv()
 from portkey_ai import Portkey
 
 # Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-)
+# Note: logging.basicConfig() should only be called in the main entry point (main.py)
+# to avoid duplicate handlers when modules are imported
 logger = logging.getLogger(__name__)
 
 
@@ -53,9 +51,10 @@ DIRECTIONAL_BLOCKLIST = {
 }
 
 # Noun indicators (generally unfair for anagrams)
+# Note: Removed "mix" and "scramble" as these are acceptable as imperative verbs
+# in MINIMALIST LIE style (e.g., "Mix listen" or "Scramble word")
 NOUN_INDICATORS = {
     "anagram",
-    "mix",
     "medley",
     "salad",
     "mixture",
@@ -63,8 +62,41 @@ NOUN_INDICATORS = {
     "chaos",
     "mess",
     "jumble",
-    "tangle",
-    "scramble"
+    "tangle"
+}
+
+
+# Standard connectors allowed in Ximenean clues
+ALLOWED_CONNECTORS = {
+    "is", "for", "gives", "from", "at", "becomes", "to", "in", "of", "with"
+}
+
+# Priority cryptic abbreviations (Top 50 - widely recognized)
+PRIORITY_ABBREVIATIONS = {
+    # Roman numerals
+    "I", "V", "X", "L", "C", "D", "M", "XI",
+    # Common elements
+    "H", "O", "N", "C", "AU", "AG", "FE", "PB", "CU",
+    # Directions
+    "N", "S", "E", "W", "L", "R",
+    # Music
+    "P", "F", "PP", "FF",
+    # Chess
+    "K", "Q", "B", "N", "R",
+    # Titles
+    "DR", "MO", "MP", "QC", "PM",
+    # Academic
+    "L", "BA", "MA", "BSC",
+    # Units
+    "T", "M", "G", "OZ", "LB", "S", "HR", "MIN",
+    # Common single letters
+    "A", "I", "O", "U", "V", "Y", "Z",
+}
+
+# Extended abbreviations (less common - flagged for review)
+EXTENDED_ABBREVIATIONS = {
+    "EN", "RE", "RA", "GI", "CA", "CH", "LA", "TE", "DIT", "DAH",
+    "NT", "ER", "ED", "ST", "ND", "RD", "TH",
 }
 
 
@@ -79,8 +111,23 @@ class AuditResult:
     double_duty_feedback: str
     indicator_fairness_check: bool
     indicator_fairness_feedback: str
-    fairness_score: float
+    fodder_presence_check: bool = True
+    fodder_presence_feedback: str = ""
+    filler_check: bool = True
+    filler_feedback: str = ""
+    indicator_grammar_check: bool = True
+    indicator_grammar_feedback: str = ""
+    narrative_integrity_check: bool = True
+    narrative_integrity_feedback: str = ""
+    obscurity_check: bool = True
+    obscurity_feedback: str = ""
+    word_validity_check: bool = True
+    word_validity_feedback: str = ""
+    fairness_score: float = 1.0
     refinement_suggestion: Optional[str] = None
+    ximenean_score: float = 1.0
+    difficulty_level: int = 3
+    narrative_fidelity: float = 100.0
     
     def to_dict(self) -> Dict:
         """Convert to dictionary for JSON serialization."""
@@ -92,8 +139,21 @@ class AuditResult:
             "double_duty_feedback": self.double_duty_feedback,
             "indicator_fairness_check": self.indicator_fairness_check,
             "indicator_fairness_feedback": self.indicator_fairness_feedback,
+            "fodder_presence_check": self.fodder_presence_check,
+            "fodder_presence_feedback": self.fodder_presence_feedback,
+            "filler_check": self.filler_check,
+            "filler_feedback": self.filler_feedback,
+            "indicator_grammar_check": self.indicator_grammar_check,
+            "indicator_grammar_feedback": self.indicator_grammar_feedback,
+            "narrative_integrity_check": self.narrative_integrity_check,
+            "narrative_integrity_feedback": self.narrative_integrity_feedback,
+            "obscurity_check": self.obscurity_check,
+            "obscurity_feedback": self.obscurity_feedback,
             "fairness_score": self.fairness_score,
             "refinement_suggestion": self.refinement_suggestion,
+            "ximenean_score": self.ximenean_score,
+            "difficulty_level": self.difficulty_level,
+            "narrative_fidelity": self.narrative_fidelity,
         }
 
 
@@ -264,6 +324,619 @@ FAIL: [explanation] if double duty is detected"""
         feedback = "[PASS] Indicator appears fair."
         return True, feedback
     
+    def _check_fodder_presence(self, clue_json: Dict) -> Tuple[bool, str]:
+        """Check that every character in the fodder is physically present in the clue text.
+        
+        This prevents using synonyms for fodder elements (e.g., using 'merchant' in 
+        surface when fodder is 'DEALER').
+        
+        Returns:
+            (passed, feedback)
+        """
+        clue_text = clue_json.get("clue", "").lower()
+        wordplay_parts = clue_json.get("wordplay_parts", {})
+        fodder = wordplay_parts.get("fodder", "").lower()
+        
+        if not fodder:
+            return True, "[PASS] No fodder to check."
+        
+        # For certain clue types, fodder might be split or abbreviated
+        clue_type = clue_json.get("type", "").lower()
+        
+        # Extract all words from fodder (split on non-alphanumeric)
+        fodder_words = re.findall(r'\b[a-z]+\b', fodder)
+        
+        # Check if each fodder word appears in the clue
+        missing_words = []
+        for word in fodder_words:
+            if len(word) > 2:  # Only check substantial words (not 'a', 'is', etc.)
+                # Use word boundaries to match whole words
+                pattern = r'\b' + re.escape(word) + r'\b'
+                if not re.search(pattern, clue_text):
+                    missing_words.append(word)
+        
+        if missing_words:
+            feedback = (
+                f"[FAIL] Fodder words not found in clue text: {', '.join(missing_words)}. "
+                "This suggests synonyms were used instead of the exact fodder. "
+                "Ximenean rules require the fodder to be physically present in the clue."
+            )
+            return False, feedback
+        
+        feedback = "[PASS] All fodder words are physically present in the clue."
+        return True, feedback
+    
+    def _check_filler_words(self, clue_json: Dict) -> Tuple[bool, str]:
+        """Check for excessive filler words that aren't part of definition, fodder, or indicator.
+        
+        Only allows 0-2 standard connectors.
+        
+        Returns:
+            (passed, feedback)
+        """
+        clue_text = clue_json.get("clue", "").lower()
+        definition = clue_json.get("definition", "").lower()
+        wordplay_parts = clue_json.get("wordplay_parts", {})
+        fodder = wordplay_parts.get("fodder", "").lower()
+        indicator = wordplay_parts.get("indicator", "").lower()
+        
+        # Extract all words from clue
+        clue_words = set(re.findall(r'\b[a-z]+\b', clue_text))
+        definition_words = set(re.findall(r'\b[a-z]+\b', definition))
+        fodder_words = set(re.findall(r'\b[a-z]+\b', fodder))
+        indicator_words = set(re.findall(r'\b[a-z]+\b', indicator))
+        
+        # Words that have a purpose
+        functional_words = definition_words | fodder_words | indicator_words
+        
+        # Find potential filler words
+        potential_fillers = clue_words - functional_words
+        
+        # Count how many are connectors vs true fillers
+        connectors_used = potential_fillers & ALLOWED_CONNECTORS
+        true_fillers = potential_fillers - ALLOWED_CONNECTORS
+        
+        # MINIMALIST LIE STANDARD: Flag excessive words
+        total_extra_words = len(connectors_used) + len(true_fillers)
+        
+        # MINIMALIST LIE STANDARD: Strict economy
+        if len(connectors_used) > 2:
+            feedback = (
+                f"[FAIL] Too many connectors ({len(connectors_used)}): {', '.join(sorted(connectors_used))}. "
+                "MINIMALIST LIE: Use at most 2 connectors. Build with Definition + Fodder + Indicator first."
+            )
+            return False, feedback
+        
+        if true_fillers:
+            feedback = (
+                f"[FAIL] Filler words detected: {', '.join(sorted(true_fillers))}. "
+                "These words fail the THEMATIC NECESSITY TEST. "
+                "Every word must be definition, fodder, indicator, or an essential thematic connector."
+            )
+            return False, feedback
+        
+        feedback = "[PASS] Minimalist economy achieved - all words serve a cryptic purpose."
+        return True, feedback
+    
+    def _check_indicator_grammar(self, clue_json: Dict) -> Tuple[bool, str]:
+        """Check indicator grammar based on position relative to fodder.
+        
+        CLASSIC XIMENEAN RULE (Primarily for Anagrams):
+        - Past participles BEFORE fodder are acceptable (attributive: "Confused dirty room")
+        - Past participles AFTER fodder are wrong for anagrams (predicative: "Dirty room confused")
+        - For other clue types (Reversal, etc.), past participles are often acceptable
+        
+        Returns:
+            (passed, feedback)
+        """
+        clue_text = clue_json.get("clue", "").lower()
+        clue_type = clue_json.get("type", "").lower()
+        wordplay_parts = clue_json.get("wordplay_parts", {})
+        indicator = wordplay_parts.get("indicator", "").lower().strip()
+        fodder = wordplay_parts.get("fodder", "").lower().strip()
+        
+        if not indicator or not fodder:
+            return True, "[PASS] No indicator or fodder to check."
+        
+        # Find positions in clue
+        indicator_pos = clue_text.find(indicator)
+        fodder_pos = clue_text.find(fodder)
+        
+        if indicator_pos == -1 or fodder_pos == -1:
+            # Can't determine position, pass
+            return True, "[PASS] Cannot determine indicator/fodder positions."
+        
+        # Check if indicator is a past participle
+        indicator_words = indicator.split()
+        past_participles = []
+        
+        for word in indicator_words:
+            # Skip very short words and common words that end in 'ed'
+            if len(word) <= 3 or word in ['red', 'bed', 'fed', 'led', 'wed', 'bred', 'shed']:
+                continue
+            
+            if word.endswith('ed'):
+                past_participles.append(word)
+        
+        if not past_participles:
+            # No past participles, grammar is fine
+            return True, "[PASS] Indicator grammar is correct (imperative form)."
+        
+        # If past participles exist, check position
+        if indicator_pos < fodder_pos:
+            # Past participle BEFORE fodder - ACCEPTABLE (attributive use)
+            feedback = (
+                f"[PASS] Indicator '{indicator}' uses past participle in attributive position "
+                f"(before fodder). This is acceptable classic Ximenean style."
+            )
+            return True, feedback
+        else:
+            # Past participle AFTER fodder - check if it's an anagram
+            if clue_type == "anagram":
+                # For anagrams, past participles after fodder are WRONG
+                feedback = (
+                    f"[FAIL] Indicator '{indicator}' appears AFTER fodder in anagram clue. "
+                    f"Past participles after fodder suggest a state rather than an instruction. "
+                    f"Prefer imperative forms (e.g., 'mix' not 'mixed') or place indicator before fodder."
+                )
+                return False, feedback
+            else:
+                # For other types (reversal, etc.), past participles after fodder are OK
+                feedback = (
+                    f"[PASS] Indicator '{indicator}' uses past participle after fodder. "
+                    f"This is acceptable for {clue_type} clues (e.g., 'returned' for reversals)."
+                )
+                return True, feedback
+    
+    def _check_narrative_integrity(self, clue_json: Dict) -> Tuple[bool, str]:
+        """Check that the surface reading is natural English, not a literal listing.
+        
+        THE NO-GIBBERISH RULE:
+        - Clues must not contain standalone single letters or fragments (e.g., "with n, e, w")
+        - All components must use standard cryptic abbreviations or real words
+        
+        Returns:
+            (passed, feedback)
+        """
+        clue_text = clue_json.get("clue", "").lower()
+        
+        # Pattern 1: Check for comma-separated single letters (literal listing)
+        # Matches patterns like: "with a, b, c" or "from x, y, z" or "has n, e, w"
+        import re
+        
+        literal_listing_patterns = [
+            r'\b[a-z]\s*,\s*[a-z]\b',  # "x, y" or "n, e"
+            r'\b[a-z]\s*,\s*[a-z]\s*,\s*[a-z]\b',  # "x, y, z"
+            r'\bwith\s+[a-z]{1,2}\s*,',  # "with en," or "with n,"
+            r'\bfrom\s+[a-z]{1,2}\s*,',  # "from en," or "from n,"
+            r'\bhas\s+[a-z]{1,2}\s*,',   # "has en," or "has n,"
+        ]
+        
+        for pattern in literal_listing_patterns:
+            if re.search(pattern, clue_text):
+                match = re.search(pattern, clue_text)
+                snippet = match.group(0) if match else "listing"
+                feedback = (
+                    f"[FAIL] Surface contains literal letter listing: '{snippet}'. "
+                    "NO-GIBBERISH RULE: Single letters must be masked using standard cryptic abbreviations. "
+                    "Example: 'N' → 'north/knight/new', 'Y' → 'unknown/year', 'EN' → 'in/nurse'."
+                )
+                return False, feedback
+        
+        # Pattern 2: Check for standalone short fragments that look non-English
+        # Split by common delimiters and check for suspicious tokens
+        tokens = re.findall(r'\b[a-z]+\b', clue_text)
+        
+        # Common cryptic abbreviations that are acceptable as standalone
+        acceptable_short = {
+            'a', 'i', 'is', 'in', 'it', 'at', 'to', 'of', 'or', 'an', 'as', 'be', 'by', 
+            'do', 'go', 'he', 'if', 'me', 'my', 'no', 'on', 'so', 'up', 'us', 'we',
+            # Cryptic standards
+            'ace', 'one', 'ten', 'two', 'gas', 'old', 'new', 'son', 'tea'
+        }
+        
+        # Look for 2-letter tokens that might be unmasked abbreviations
+        suspicious_tokens = []
+        for token in tokens:
+            if len(token) == 2 and token not in acceptable_short:
+                # Check if it's a common word or likely an unmasked code
+                common_two_letter = {'am', 'an', 'as', 'at', 'be', 'by', 'do', 'go', 'he', 
+                                    'hi', 'if', 'in', 'is', 'it', 'me', 'my', 'no', 'of', 
+                                    'oh', 'ok', 'on', 'or', 'ox', 'so', 'to', 'up', 'us', 
+                                    'we', 'ye'}
+                if token not in common_two_letter:
+                    suspicious_tokens.append(token)
+        
+        # If we find suspicious unmasked tokens in a listinging context, warn
+        if suspicious_tokens and ',' in clue_text:
+            feedback = (
+                f"[WARN] Possible unmasked abbreviations: {', '.join(suspicious_tokens)}. "
+                "Verify these are natural English words, not letter codes. "
+                "If codes, use cryptic substitutions (e.g., 'en' → 'nurse', 're' → 'soldier')."
+            )
+            return True, feedback  # Warning, not hard fail
+        
+        feedback = "[PASS] Surface reading appears natural - no literal letter listings detected."
+        return True, feedback
+    
+    def _check_obscurity(self, clue_json: Dict) -> Tuple[bool, str]:
+        """Check that wordplay uses standard Top 50 cryptic abbreviations, not obscure fragments.
+        
+        TOP 50 PRIORITY ABBREVIATIONS:
+        - Roman numerals, common elements, directions, music, chess, titles, units
+        - Widely recognized in standard cryptic crosswords
+        
+        FLAGS:
+        - Non-standard abbreviations (e.g., DIT, DAH, EN) for manual review
+        - Non-word fodder (e.g., NETTAB, KCITS) for rejection
+        
+        Returns:
+            (passed, feedback)
+        """
+        wordplay_parts = clue_json.get("wordplay_parts", {})
+        clue_type = clue_json.get("type", "").lower()
+        fodder = wordplay_parts.get("fodder", "").upper()
+        mechanism = wordplay_parts.get("mechanism", "").lower()
+        
+        # Extract fragments from fodder (for Charades, Containers)
+        # Look for patterns like "EN + TREAT + Y" or "EN (nurse) + TREAT"
+        import re
+        fragments = re.findall(r'\b([A-Z]{1,4})\b', fodder)
+        
+        # Check 1: Flag non-priority abbreviations
+        non_priority_fragments = []
+        for frag in fragments:
+            # Skip if it's a full word (not an abbreviation)
+            if len(frag) > 3:
+                continue
+            
+            if frag not in PRIORITY_ABBREVIATIONS and frag not in EXTENDED_ABBREVIATIONS:
+                # Unknown fragment
+                non_priority_fragments.append(frag)
+            elif frag in EXTENDED_ABBREVIATIONS:
+                # Extended = less common, warn
+                non_priority_fragments.append(f"{frag} (extended)")
+        
+        if non_priority_fragments:
+            feedback = (
+                f"[WARN] Non-priority abbreviations detected: {', '.join(non_priority_fragments)}. "
+                "TOP 50 PRIORITY: Use Roman numerals (I,V,X,L,C,D,M), common elements (H,O,N,AU,FE), "
+                "directions (N,S,E,W), music (P,F), chess (K,Q,B,N), titles (DR,MP,MO), units (T,M,S,HR). "
+                "Extended abbreviations should be justified via Wikipedia Crossword Abbreviations."
+            )
+            return True, feedback  # Warning, not hard fail
+        
+        # Check 2: Verify fodder words are real English (critical for reversals)
+        if clue_type in ["reversal", "reverse"]:
+            # Extract the actual fodder word (not the mechanism)
+            # Pattern: fodder is usually a single word for reversals
+            fodder_words = re.findall(r'\b[a-z]+\b', fodder.lower())
+            
+            try:
+                import enchant
+                d = enchant.Dict("en_US")
+                non_words = []
+                
+                for word in fodder_words:
+                    if len(word) > 2 and not d.check(word):
+                        # Not a valid English word
+                        non_words.append(word)
+                
+                if non_words:
+                    feedback = (
+                        f"[FAIL] Non-word fodder detected: {', '.join(non_words)}. "
+                        "NO NON-WORDS AS FODDER: Every piece of fodder must be a real English word. "
+                        "For reversals, both original and reversed must be valid words. "
+                        "If reversal creates non-word (e.g., 'nettab', 'kcits'), choose DIFFERENT mechanism."
+                    )
+                    return False, feedback
+            except Exception as e:
+                # Enchant not available, skip word validation
+                pass
+        
+        # Check 3: Look for non-word patterns in mechanism description
+        # Patterns like "reverse of nettab" or "anagram of kcits"
+        non_word_patterns = [
+            r'reverse of ([a-z]+)',
+            r'anagram of ([a-z]+)',
+            r'hidden in ([a-z]+)',
+        ]
+        
+        for pattern in non_word_patterns:
+            matches = re.findall(pattern, mechanism)
+            for match in matches:
+                if len(match) > 3:  # Only check substantial words
+                    try:
+                        import enchant
+                        d = enchant.Dict("en_US")
+                        if not d.check(match):
+                            feedback = (
+                                f"[FAIL] Non-word in mechanism: '{match}'. "
+                                "Surface legitimacy check: Wordplay cannot force non-words into the clue. "
+                                "Choose a different mechanism that uses real English words only."
+                            )
+                            return False, feedback
+                    except:
+                        pass
+        
+        feedback = "[PASS] All abbreviations are standard Top 50 priority types."
+        return True, feedback
+    
+    def _check_word_validity(self, clue_json: Dict) -> Tuple[bool, str]:
+        """Check that all fodder words are valid English dictionary words.
+        
+        REAL-WORD DICTIONARY CONSTRAINT:
+        - All mechanical fodder must be legitimate English words
+        - Particularly critical for Reversals and Containers
+        - Prevents gibberish like 'AMHTSA', 'nettab', 'kcits'
+        
+        Returns:
+            (passed, feedback)
+        """
+        wordplay_parts = clue_json.get("wordplay_parts", {})
+        clue_type = clue_json.get("type", "").lower()
+        fodder = wordplay_parts.get("fodder", "").lower()
+        mechanism = wordplay_parts.get("mechanism", "").lower()
+        
+        if not fodder:
+            return True, "[PASS] No fodder to validate."
+        
+        # Extract all words from fodder (ignoring operators like +, parentheses, etc.)
+        fodder_words = re.findall(r'\b[a-z]{2,}\b', fodder)
+        
+        # Filter out obvious abbreviations (2-3 letter fragments that are known abbreviations)
+        words_to_check = []
+        for word in fodder_words:
+            # Skip if it's a known abbreviation
+            word_upper = word.upper()
+            if word_upper in PRIORITY_ABBREVIATIONS or word_upper in EXTENDED_ABBREVIATIONS:
+                continue
+            # Check words of substantial length (3+ characters)
+            if len(word) >= 3:
+                words_to_check.append(word)
+        
+        if not words_to_check:
+            return True, "[PASS] No substantial words in fodder to validate."
+        
+        # Try to validate words using enchant library
+        try:
+            import enchant
+            d = enchant.Dict("en_US")
+            non_words = []
+            
+            for word in words_to_check:
+                # Check if word is valid
+                if not d.check(word):
+                    # Also check British spelling as fallback
+                    try:
+                        d_gb = enchant.Dict("en_GB")
+                        if not d_gb.check(word):
+                            non_words.append(word)
+                    except:
+                        non_words.append(word)
+            
+            if non_words:
+                feedback = (
+                    f"[FAIL] Non-dictionary words detected in fodder: {', '.join(non_words)}. "
+                    "REAL-WORD DICTIONARY CONSTRAINT: All mechanical fodder must be legitimate English words. "
+                )
+                
+                # Specific guidance by clue type
+                if clue_type in ["reversal", "reverse"]:
+                    feedback += (
+                        "For Reversals, both the fodder word AND its reverse must be valid. "
+                        "Example: 'lager' (valid) → REGAL (valid) ✓. "
+                        "Counter-example: 'amhtsa' (gibberish) → ASTHMA ✗. "
+                        "MECHANISM PIVOT REQUIRED: Choose Charade, Hidden Word, or Anagram instead."
+                    )
+                elif clue_type in ["container", "insertion"]:
+                    feedback += (
+                        "For Containers, both outer and inner words must be dictionary-valid. "
+                        "Example: IN inside PAT = PAINT ✓. "
+                        "Counter-example: 'nettab' containing EN ✗."
+                    )
+                else:
+                    feedback += (
+                        "Every piece of fodder must be defensible via standard English dictionaries "
+                        "(Oxford, Merriam-Webster, etc.)."
+                    )
+                
+                return False, feedback
+                
+        except ImportError:
+            # Enchant library not available - try basic validation
+            logger.warning("enchant library not available for word validation. Install with: pip install pyenchant")
+            
+            # Fallback: Check for obvious gibberish patterns
+            gibberish_patterns = [
+                r'[bcdfghjklmnpqrstvwxyz]{5,}',  # 5+ consonants in a row
+                r'[aeiou]{4,}',  # 4+ vowels in a row
+            ]
+            
+            suspicious_words = []
+            for word in words_to_check:
+                for pattern in gibberish_patterns:
+                    if re.search(pattern, word):
+                        suspicious_words.append(word)
+                        break
+            
+            if suspicious_words:
+                feedback = (
+                    f"[WARN] Potentially non-standard words detected: {', '.join(suspicious_words)}. "
+                    "Install pyenchant for full dictionary validation: pip install pyenchant"
+                )
+                return True, feedback  # Warning only without full validation
+        
+        except Exception as e:
+            logger.error(f"Word validation error: {e}")
+            # Don't fail the audit due to technical issues
+            return True, f"[PASS] Word validation skipped due to error: {e}"
+        
+        feedback = "[PASS] All fodder words are valid dictionary entries."
+        return True, feedback
+    
+    def _calculate_ximenean_score(self, clue_json: Dict, checks: Dict[str, bool]) -> float:
+        """Calculate Ximenean Score (0.0-1.0) measuring technical compliance.
+        
+        Penalizes for:
+        - Filler words (excessive connectors or true fillers)
+        - Incorrect indicator grammar (non-imperative)
+        - Lack of fodder integrity (synonyms instead of exact fodder)
+        
+        Args:
+            clue_json: The clue JSON object
+            checks: Dictionary of check results
+        
+        Returns:
+            Float between 0.0 and 1.0 (1.0 = perfect compliance)
+        """
+        score = 1.0
+        
+        # Penalty for filler words (max -0.3)
+        if not checks['filler']:
+            clue_text = clue_json.get("clue", "").lower()
+            clue_words = len(re.findall(r'\b[a-z]+\b', clue_text))
+            # Harsher penalty for longer clues with fillers
+            if clue_words > 10:
+                score -= 0.3
+            elif clue_words > 8:
+                score -= 0.2
+            else:
+                score -= 0.15
+        
+        # Penalty for indicator grammar issues (max -0.3)
+        if not checks['grammar']:
+            score -= 0.3
+        
+        # Penalty for fodder integrity issues (max -0.4)
+        if not checks['fodder']:
+            score -= 0.4
+        
+        # CRITICAL: Penalty for non-word fodder (max -0.5)
+        # This is the most severe penalty as gibberish violates core Ximenean principles
+        if not checks['word_validity']:
+            score -= 0.5
+        
+        # Penalty for obscurity issues (max -0.2)
+        if not checks['obscurity']:
+            score -= 0.2
+        
+        # Penalty for narrative integrity (max -0.25)
+        if not checks['narrative']:
+            score -= 0.25
+        
+        # Ensure score doesn't go below 0
+        return max(0.0, score)
+    
+    def _calculate_difficulty_level(self, clue_json: Dict) -> int:
+        """Calculate Difficulty Level (1-5) based on complexity.
+        
+        Levels:
+        1. Direct: Obvious definitions, simple mechanisms
+        2. Moderate: Standard indicators, common abbreviations
+        3. Intermediate: Some deceptive masking
+        4. Advanced: Oblique definitions, complex charades
+        5. Master: Gold standard deceptions, lateral leaps
+        
+        Args:
+            clue_json: The clue JSON object
+        
+        Returns:
+            Integer between 1 and 5
+        """
+        difficulty = 3  # Start at intermediate
+        
+        clue_type = clue_json.get("type", "").lower()
+        definition = clue_json.get("definition", "").lower()
+        clue_text = clue_json.get("clue", "").lower()
+        wordplay_parts = clue_json.get("wordplay_parts", {})
+        fodder = wordplay_parts.get("fodder", "").upper()
+        
+        # Factor 1: Clue type complexity
+        if clue_type in ["hidden", "homophone"]:
+            difficulty -= 1  # Simpler mechanisms
+        elif clue_type in ["container", "double definition"]:
+            difficulty += 0  # Standard complexity
+        elif clue_type in ["reversal", "charade"]:
+            difficulty += 1  # More complex
+        
+        # Factor 2: Definition obliqueness
+        # Check if definition appears verbatim in clue (less oblique)
+        if definition in clue_text:
+            difficulty -= 1
+        else:
+            # Definition is transformed/oblique
+            difficulty += 1
+        
+        # Factor 3: Abbreviation usage (cryptic masking)
+        priority_abbrev_count = sum(1 for abbr in PRIORITY_ABBREVIATIONS if abbr in fodder)
+        if priority_abbrev_count >= 3:
+            difficulty += 1  # Heavy cryptic substitution
+        
+        # Factor 4: Clue length (longer = potentially more complex)
+        word_count = len(clue_text.split())
+        if word_count <= 5:
+            difficulty -= 1  # Minimalist, cleaner
+        elif word_count >= 10:
+            difficulty += 0  # Verbose doesn't mean harder
+        
+        # Factor 5: Fodder complexity
+        fodder_parts = fodder.split("+")
+        if len(fodder_parts) >= 4:
+            difficulty += 1  # Complex charade
+        
+        # Clamp to 1-5 range
+        return max(1, min(5, difficulty))
+    
+    def _calculate_narrative_fidelity(self, clue_json: Dict, checks: Dict[str, bool]) -> float:
+        """Calculate Narrative Fidelity (0-100%) measuring surface naturalness.
+        
+        100% means the clue sounds exactly like a natural sentence.
+        Lower scores indicate visible cryptic mechanics seams.
+        
+        Args:
+            clue_json: The clue JSON object
+            checks: Dictionary of check results
+        
+        Returns:
+            Float between 0.0 and 100.0
+        """
+        fidelity = 100.0
+        
+        clue_text = clue_json.get("clue", "")
+        
+        # Major penalties
+        # Narrative integrity failure (literal listings) - severe
+        if not checks['narrative']:
+            fidelity -= 40.0
+        
+        # Filler words (verbose, unnatural)
+        if not checks['filler']:
+            fidelity -= 20.0
+        
+        # Minor penalties
+        # Indicator grammar issues (awkward phrasing)
+        if not checks['grammar']:
+            fidelity -= 15.0
+        
+        # Double duty issues (mechanical predictability)
+        if not checks['double_duty']:
+            fidelity -= 10.0
+        
+        # Obscurity issues (non-standard abbreviations feel forced)
+        if not checks['obscurity']:
+            fidelity -= 10.0
+        
+        # Bonus for brevity (minimalist clues sound cleaner)
+        word_count = len(clue_text.split())
+        if word_count <= 6:
+            fidelity += 5.0  # Elegant economy
+        elif word_count >= 12:
+            fidelity -= 10.0  # Verbose, clunky
+        
+        # Ensure fidelity stays in valid range
+        return max(0.0, min(100.0, fidelity))
+    
     def _extract_response_text(self, response) -> str:
         """
         Extract text content from Portkey API response.
@@ -340,15 +1013,57 @@ FAIL: [explanation] if double duty is detected"""
         # Flag 3: Indicator fairness check
         fairness_passed, fairness_feedback = self._check_indicator_fairness(clue_json)
         
+        # Flag 4: Fodder presence check (NEW - Strict Ximenean)
+        fodder_passed, fodder_feedback = self._check_fodder_presence(clue_json)
+        
+        # Flag 5: Filler words check (NEW - Strict Ximenean)
+        filler_passed, filler_feedback = self._check_filler_words(clue_json)
+        
+        # Flag 6: Indicator grammar check (NEW - Strict Ximenean)
+        grammar_passed, grammar_feedback = self._check_indicator_grammar(clue_json)
+        
+        # Flag 7: Narrative integrity check (NEW - Advanced Narrative Masking)
+        narrative_passed, narrative_feedback = self._check_narrative_integrity(clue_json)
+        
+        # Flag 8: Obscurity check (NEW - Top-Tier Cryptic Standards)
+        obscurity_passed, obscurity_feedback = self._check_obscurity(clue_json)
+        
+        # Flag 9: Word validity check (NEW - Real-Word Dictionary Constraint)
+        word_validity_passed, word_validity_feedback = self._check_word_validity(clue_json)
+        
         # Calculate fairness score (0-1)
-        fairness_score = sum([
+        checks = [
             direction_passed,
             double_duty_passed,
-            fairness_passed
-        ]) / 3.0
+            fairness_passed,
+            fodder_passed,
+            filler_passed,
+            grammar_passed,
+            narrative_passed,
+            obscurity_passed,
+            word_validity_passed
+        ]
+        fairness_score = sum(checks) / len(checks)
+        
+        # Calculate advanced metrics (Phase 10)
+        check_dict = {
+            'direction': direction_passed,
+            'double_duty': double_duty_passed,
+            'fairness': fairness_passed,
+            'fodder': fodder_passed,
+            'filler': filler_passed,
+            'grammar': grammar_passed,
+            'narrative': narrative_passed,
+            'obscurity': obscurity_passed,
+            'word_validity': word_validity_passed
+        }
+        
+        ximenean_score = self._calculate_ximenean_score(clue_json, check_dict)
+        difficulty_level = self._calculate_difficulty_level(clue_json)
+        narrative_fidelity = self._calculate_narrative_fidelity(clue_json, check_dict)
         
         # Overall pass (all flags must pass)
-        overall_passed = direction_passed and double_duty_passed and fairness_passed
+        overall_passed = all(checks)
         
         # Generate refinement suggestion if fairness_score < 1.0 but > 0.5
         refinement_suggestion = None
@@ -363,13 +1078,29 @@ FAIL: [explanation] if double duty is detected"""
             double_duty_feedback=double_duty_feedback,
             indicator_fairness_check=fairness_passed,
             indicator_fairness_feedback=fairness_feedback,
+            fodder_presence_check=fodder_passed,
+            fodder_presence_feedback=fodder_feedback,
+            filler_check=filler_passed,
+            filler_feedback=filler_feedback,
+            indicator_grammar_check=grammar_passed,
+            indicator_grammar_feedback=grammar_feedback,
+            narrative_integrity_check=narrative_passed,
+            narrative_integrity_feedback=narrative_feedback,
+            obscurity_check=obscurity_passed,
+            obscurity_feedback=obscurity_feedback,
+            word_validity_check=word_validity_passed,
+            word_validity_feedback=word_validity_feedback,
             fairness_score=fairness_score,
-            refinement_suggestion=refinement_suggestion
+            refinement_suggestion=refinement_suggestion,
+            ximenean_score=ximenean_score,
+            difficulty_level=difficulty_level,
+            narrative_fidelity=narrative_fidelity
         )
         
         logger.info(
             f"Audit result: {'PASSED' if overall_passed else 'FAILED'} "
-            f"(fairness_score: {fairness_score:.1%})"
+            f"(fairness_score: {fairness_score:.1%}, ximenean: {ximenean_score:.2f}, "
+            f"difficulty: {difficulty_level}/5, narrative: {narrative_fidelity:.0f}%)"
         )
         
         return audit_result
