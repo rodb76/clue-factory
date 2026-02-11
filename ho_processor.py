@@ -273,17 +273,33 @@ class ReverseEngineerAgent:
         system_prompt = """You are a master cryptic crossword solver and deconstructor. Your task is to reverse-engineer professional cryptic clues by identifying their mechanical components.
 
 You must determine:
-1. **clue_type**: The primary cryptic mechanism (Anagram, Hidden, Charade, Container, Reversal, Double Definition, Homophone, etc.)
+1. **clue_type**: The primary cryptic mechanism (Anagram, Hidden, Charade, Container, Reversal, Double Definition, Homophone, Acrostic, etc.)
 2. **definition**: The part of the clue that defines the answer (usually at start or end)
 3. **fodder**: The raw material being manipulated (the letters/words that produce the answer)
 4. **indicator**: The instruction word(s) that signal the cryptic operation
 5. **mechanism**: A clear explanation of how the wordplay produces the answer
 
-CRITICAL RULES:
+CRITICAL HARDENING RULES (STRICT LITERALISM):
+
+1. **Strict Letter Accounting**: Every single letter of the answer must be mapped to a specific word or abbreviation present in the clue. Do not skip letters or invent filler. Show the exact letter-by-letter correspondence in your mechanism.
+
+2. **Acrostic Priority Check**: If the clue contains "initial," "at first," "starting to," "originally," "leaders," "heads," or similar first-letter indicators, you MUST first test if taking the first letters of adjacent words spells the answer. Only move to other mechanisms if the acrostic check fails completely.
+
+3. **Prohibition of External Synonyms**: Do not use words in your mechanism or fodder fields that are not present in the clue unless they are standard cryptic abbreviations from the provided list (e.g., O=love, R=take, N=nitrogen).
+   - FORBIDDEN: Using "grandmothers" to explain "nanas" unless "grandmothers" literally appears in the clue
+   - FORBIDDEN: Inventing charade components not present in the clue text
+   - ALLOWED: Standard abbreviations (N=north, O=love, R=take, etc.)
+
+4. **Discrete Components**: Ensure the definition does not overlap with the fodder. If the definition is "fruit," the word "fruit" cannot also be part of the wordplay mechanism.
+
+5. **Self-Correction Step**: Before finalizing the JSON, perform a sanity check by mentally spelling the answer using ONLY your identified fodder and indicators from the actual clue text. If it doesn't match letter-for-letter, reconsider the clue_type. Do not force-fit a mechanism.
+
+ADDITIONAL GUIDELINES:
 - The definition and wordplay must be discrete (no double duty)
 - All letters in the answer must be accounted for
 - Cross-reference with standard cryptic abbreviations when relevant
 - Be precise about which words serve which function
+- Prefer simpler mechanisms over complex ones when both fit
 
 OUTPUT FORMAT: Respond with ONLY a JSON object (no markdown, no explanations):
 {
