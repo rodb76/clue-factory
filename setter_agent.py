@@ -142,13 +142,15 @@ class SetterAgent:
     SURFACE_MODEL_ID = os.getenv("SURFACE_MODEL_ID", os.getenv("MODEL_ID"))  # Surface writing
     MODEL_ID = LOGIC_MODEL_ID  # Default to logic model for backward compatibility
     
-    def __init__(self, timeout: float = 30.0):
+    def __init__(self, timeout: float = 30.0, temperature: float = 0.5):
         """Initialize the Setter Agent with Portkey client.
         
         Args:
             timeout: Request timeout in seconds (default: 30.0).
+            temperature: Temperature for generation (0.0-1.0, default: 0.5).
         """
         self.api_key = os.getenv("PORTKEY_API_KEY")
+        self.temperature = temperature
         
         if not self.api_key:
             raise ValueError(
@@ -163,7 +165,7 @@ class SetterAgent:
             timeout=timeout
         )
         
-        logger.info(f"Setter Agent initialized")
+        logger.info(f"Setter Agent initialized (temperature: {self.temperature})")
         logger.info(f"  Logic model (wordplay): {self.LOGIC_MODEL_ID}")
         logger.info(f"  Surface model (clue text): {self.SURFACE_MODEL_ID}")
     
@@ -287,11 +289,11 @@ Return ONLY JSON (no other text) with this structure:
 }}
 
 CRITICAL RULES BY TYPE:
-- Anagram: fodder must contain EXACTLY the same letters as {answer.upper()}
-- Hidden Word: MANDATORY: You must verify the spelling by placing brackets around the hidden answer in your 'mechanism' string. Example for 'AORTA': 'found in r[ADIO ORTA]rio'. If the letters are not consecutive, it is a FAIL. The fodder must be real words/phrases. Verify character-by-character: {answer.upper()[0]}, {answer.upper()[1]}, {answer.upper()[2] if len(answer) > 2 else ''}, etc.
+- Anagram: (1) fodder must contain EXACTLY the same letters as {answer.upper()}. (2) ALL ANAGRAM FODDER MUST CONSIST OF REAL, COMMON ENGLISH WORDS. You are STRICTLY FORBIDDEN from using partial words, non-dictionary abbreviations, or random letter strings to balance an anagram. Examples: 'dirty room' → DORMITORY ✓ (both real words), 'sing ro' → ROUSING ✗ ('ro' is not a word), 'tame sng' → MAGENTS ✗ ('sng' is gibberish). Every word in your fodder will be validated against an English dictionary. (3) IDENTITY CONSTRAINT: The answer '{answer.upper()}' (or any variant like '{answer.upper()}S', '{answer.upper()}ED') MUST NOT appear anywhere in the fodder. The fodder must consist of completely different words.
+- Hidden Word: MANDATORY: You must verify the spelling by placing brackets around the hidden answer in your 'mechanism' string. Example for 'AORTA': 'found in r[ADIO ORTA]rio'. If the letters are not consecutive, it is a FAIL. The fodder must be real words/phrases. Verify character-by-character: {answer.upper()[0]}, {answer.upper()[1]}, {answer.upper()[2] if len(answer) > 2 else ''}, etc. IDENTITY CONSTRAINT: The answer must be concealed across at least TWO DIFFERENT WORDS, not hidden within a single word that IS the answer (e.g., 'PAINT' hidden in 'paint' is FORBIDDEN; 'PAINT' hidden in 'dePAINTed' is acceptable).
 - Charade: parts must CONCATENATE to exactly {answer.upper()}
 - Container: outer word must CONTAIN inner word to make {answer.upper()}. BOTH outer and inner words MUST be real English dictionary words (no gibberish like 'nettab').
-- Reversal: The fodder word reversed must equal {answer.upper()}. CRITICAL: The fodder MUST be a real English dictionary word BEFORE reversal (e.g., 'lager' → REGAL is valid, but 'amhtsa' → ASTHMA is FORBIDDEN gibberish). If no real word reverses to form {answer.upper()}, you MUST pivot to a different mechanism (Charade, Hidden Word, etc.).
+- Reversal: The fodder word reversed must equal {answer.upper()}. CRITICAL: The fodder MUST be a real English dictionary word BEFORE reversal (e.g., 'lager' → REGAL is valid, but 'amhtsa' → ASTHMA is FORBIDDEN gibberish). If no real word reverses to form {answer.upper()}, you MUST pivot to a different mechanism (Charade, Hidden Word, etc.). IDENTITY CONSTRAINT: The fodder must not BE the answer itself (e.g., using 'STAR' reversed for the answer 'RATS' is lazy; find a different word like 'tsar' or use a different mechanism).
 
 REAL-WORD DICTIONARY CONSTRAINT:
 - For Reversals and Containers, every piece of fodder must be a valid English word found in a standard dictionary
@@ -308,6 +310,7 @@ REAL-WORD DICTIONARY CONSTRAINT:
             response = self.client.chat.completions.create(
                 model=self.LOGIC_MODEL_ID,  # Use stronger model for mechanical wordplay
                 max_tokens=300,
+                temperature=self.temperature,
                 messages=[
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_prompt}
@@ -440,6 +443,7 @@ NO-GIBBERISH ENFORCEMENT:
             response = self.client.chat.completions.create(
                 model=self.SURFACE_MODEL_ID,  # Use cheaper model for creative surface writing
                 max_tokens=300,
+                temperature=self.temperature,
                 messages=[
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_prompt}

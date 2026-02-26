@@ -17,6 +17,7 @@ import logging
 import re
 import random
 import hashlib
+import argparse
 from typing import List, Dict, Tuple, Optional
 from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor
@@ -153,7 +154,10 @@ class ClueResult:
         clue_id: str = None,
         clue_with_enum: str = None,
         length: int = None,
-        reveal_order: List[int] = None
+        reveal_order: List[int] = None,
+        # Temperature tracking (NEW)
+        temperature: float = None,
+        variant_number: int = 1
     ):
         self.word = word
         self.clue_type = clue_type
@@ -171,6 +175,9 @@ class ClueResult:
         self.clue_with_enum = clue_with_enum
         self.length = length
         self.reveal_order = reveal_order
+        # Temperature tracking (NEW)
+        self.temperature = temperature
+        self.variant_number = variant_number
     
     def to_dict(self) -> Dict:
         """Convert to dictionary for JSON serialization."""
@@ -220,6 +227,14 @@ class ClueResult:
         if self.regeneration_count > 0:
             result["regeneration_attempts"] = self.regeneration_count
         
+        # Temperature metadata (NEW)
+        if self.temperature is not None:
+            result["temperature"] = self.temperature
+        
+        # Variant tracking (NEW)
+        if self.variant_number > 1:
+            result["variant_number"] = self.variant_number
+        
         if self.explanation_data:
             result["explanation"] = self.explanation_data
         
@@ -234,7 +249,9 @@ def process_single_clue_sync(
     auditor: XimeneanAuditor,
     enumeration: str = None,
     regeneration_attempts: int = 0,
-    max_regenerations: int = 1
+    max_regenerations: int = 1,
+    temperature: float = 0.5,
+    used_types: Optional[List[str]] = None
 ) -> ClueResult:
     """
     Process a single clue through the complete pipeline (synchronous version).
@@ -247,7 +264,7 @@ def process_single_clue_sync(
     3. Judge results (Referee)
     4. Audit for Ximenean fairness (Auditor)
     
-    If audit fails, regenerate with feedback (up to max_regenerations attempts).
+    If audit fails, may attempt different clue type diversification.
     
     Args:
         word: The target word.
@@ -258,11 +275,15 @@ def process_single_clue_sync(
         enumeration: Optional enumeration (e.g., "(6)").
         regeneration_attempts: Current regeneration attempt count.
         max_regenerations: Maximum regeneration attempts.
+        temperature: Temperature for generation (0.0-1.0, default: 0.5).
+        used_types: List of clue types already tried for this word.
     
     Returns:
         ClueResult with full processing details.
     """
     
+    if used_types is None:
+        used_types = []
     logger.info(f"Processing: {word} ({clue_type})" + 
                 (f" [Attempt {regeneration_attempts + 1}]" if regeneration_attempts > 0 else ""))
     
@@ -429,16 +450,36 @@ def process_single_clue_sync(
                 feedback = " | ".join(feedback_parts)
                 logger.info(f"    Feedback: {feedback[:80]}")
                 
-                # Recursively try again with feedback
+                # FORCED VARIETY: Try a different clue type if available
+                used_types.append(clue_type)
+                available_types = [
+                    "Anagram", "Charade", "Hidden Word", "Container", 
+                    "Reversal", "Homophone", "Double Definition"
+                ]
+                
+                # Remove types already attempted for this word
+                remaining_types = [t for t in available_types if t not in used_types]
+                
+                new_clue_type = clue_type  # Default: retry same type
+                if remaining_types:
+                    # Use next available type (forced diversification)
+                    new_clue_type = remaining_types[0]
+                    logger.info(f"    Type diversification: Switching from '{clue_type}' to '{new_clue_type}'")
+                else:
+                    logger.info(f"    All unique types exhausted, will retry '{clue_type}'")
+                
+                # Recursively try again with new clue type and feedback
                 return process_single_clue_sync(
                     word,
-                    clue_type,
+                    new_clue_type,
                     setter,
                     solver,
                     auditor,
                     enumeration,
                     regeneration_attempts + 1,
-                    max_regenerations
+                    max_regenerations,
+                    temperature,
+                    used_types
                 )
             else:
                 logger.warning(f"  Max regeneration attempts reached for {word}")
@@ -478,7 +519,8 @@ def process_single_clue_sync(
             clue_id=clue_id,
             clue_with_enum=clue_with_enum,
             length=length,
-            reveal_order=reveal_order
+            reveal_order=reveal_order,
+            temperature=temperature
         )
         
     except Exception as e:
@@ -553,10 +595,10 @@ async def process_batch_async(
     logger.info(f"Starting batch processing: {len(word_type_pairs)} clues")
     logger.info(f"Max concurrent requests: {max_concurrent}")
     
-    # Initialize agents (reuse for all requests)
-    setter = SetterAgent(timeout=60.0)
+    # Initialize agents (reuse for all requests) - default temperature 0.5
+    setter = SetterAgent(timeout=60.0, temperature=0.5)
     solver = SolverAgent(timeout=60.0)
-    auditor = XimeneanAuditor(timeout=60.0)
+    auditor = XimeneanAuditor(timeout=60.0, temperature=0.5)
     
     # Create thread pool for parallel execution
     executor = ThreadPoolExecutor(max_workers=max_concurrent)
@@ -607,10 +649,10 @@ def process_batch_sync(
     
     logger.info(f"Starting sequential processing: {len(word_type_pairs)} clues")
     
-    # Initialize agents
-    setter = SetterAgent(timeout=60.0)
+    # Initialize agents - default temperature 0.5
+    setter = SetterAgent(timeout=60.0, temperature=0.5)
     solver = SolverAgent(timeout=60.0)
-    auditor = XimeneanAuditor(timeout=60.0)
+    auditor = XimeneanAuditor(timeout=60.0, temperature=0.5)
     
     results = []
     for i, (word, clue_type) in enumerate(word_type_pairs, 1):
@@ -662,7 +704,9 @@ def factory_run(
     max_concurrent: int = 5,
     output_file: str = "final_clues_output.json",
     use_seed_words: bool = True,
-    required_types: Optional[List[str]] = None
+    required_types: Optional[List[str]] = None,
+    temperature: float = 0.5,
+    variants_per_word: int = 1
 ) -> List[ClueResult]:
     """
     The "Clue Factory" - continuous loop that generates valid clues until target is met.
@@ -673,6 +717,7 @@ def factory_run(
     3. Continues until target_count PASSED clues are generated
     4. Saves only PASSED clues to output file
     5. Optionally filters by required clue types
+    6. Can generate multiple variants per word with forced type diversification
     
     Args:
         target_count: Number of PASSED clues needed (default: 20).
@@ -682,6 +727,8 @@ def factory_run(
         use_seed_words: If True, use seed_words.json; else use WordSelector (default: True).
         required_types: List of required clue types (e.g., ["Charade", "Container"]).
                        If None or empty, all types are allowed (default: None).
+        temperature: Temperature for generation (0.0-1.0, default: 0.5).
+        variants_per_word: Number of clue variants to generate per word (default: 1).
     
     Returns:
         List of all PASSED ClueResult objects.
@@ -729,13 +776,14 @@ def factory_run(
     
     print(f"Batch size: {batch_size} words")
     print(f"Target: {target_count} PASSED clues")
-    print(f"Pipeline: Mechanical Draft → Validate → Surface Polish → Solve → Judge → Audit")
+    print(f"Pipeline: Mechanical Draft -> Validate -> Surface Polish -> Solve -> Judge -> Audit")
     print()
     
-    # Initialize agents (reuse across batches)
-    setter = SetterAgent(timeout=60.0)
+    # Initialize agents (reuse across batches) - temperature passed from CLI (default 0.5)
+    temperature = getattr(args, 'temperature', 0.5) if 'args' in locals() else 0.5
+    setter = SetterAgent(timeout=60.0, temperature=temperature)
     solver = SolverAgent(timeout=60.0)
-    auditor = XimeneanAuditor(timeout=60.0)
+    auditor = XimeneanAuditor(timeout=60.0, temperature=temperature)
     explainer = ExplanationAgent(timeout=60.0)
     
     # Track results
@@ -810,27 +858,79 @@ def factory_run(
         # Process all clues in batch
         batch_results = []
         for word, clue_type in word_type_pairs:
-            result = process_single_clue_sync(
-                word,
-                clue_type,
-                setter,
-                solver,
-                auditor,
-                enumeration=None,
-                regeneration_attempts=0,
-                max_regenerations=1
-            )
-            batch_results.append(result)
-            all_attempts.append(result)
+            # Track variants for this word if variants_per_word > 1
+            word_variants_collected = 0
+            used_types_for_word = []
+            variant_number = 0
+            max_attempts_per_word = 7 * 2  # Up to 2 full cycles through available types
+            attempts_for_this_word = 0
             
-            # Add to passed clues if successful
-            if result.passed:
-                passed_clues.append(result)
-                logger.info(f"✓ SUCCESS: {word} ({len(passed_clues)}/{target_count})")
+            while word_variants_collected < variants_per_word and attempts_for_this_word < max_attempts_per_word:
+                variant_number += 1
+                attempts_for_this_word += 1
                 
-                # Check if we've reached target
-                if len(passed_clues) >= target_count:
+                # For variants, use different clue types
+                current_clue_type = clue_type
+                if variant_number > 1 and variants_per_word > 1:
+                    # Pick a type not yet used for this word
+                    available_types = [
+                        "Anagram", "Charade", "Hidden Word", "Container", 
+                        "Reversal", "Homophone", "Double Definition"
+                    ]
+                    remaining_types = [t for t in available_types if t not in used_types_for_word]
+                    
+                    if remaining_types:
+                        current_clue_type = remaining_types[0]
+                        logger.info(f"  Variant {variant_number}: Trying '{current_clue_type}' for {word}")
+                    else:
+                        logger.info(f"  Variant {variant_number}: All unique types exhausted for {word}")
+                        break  # No more unique types available
+                elif variants_per_word == 1 and variant_number > 1:
+                    # Single variant mode: only try once, then move on
+                    logger.info(f"  Single variant mode: exhausted attempts for {word}, moving to next word")
                     break
+                
+                result = process_single_clue_sync(
+                    word,
+                    current_clue_type,
+                    setter,
+                    solver,
+                    auditor,
+                    enumeration=None,
+                    regeneration_attempts=0,
+                    max_regenerations=1,
+                    temperature=temperature,
+                    used_types=used_types_for_word.copy()
+                )
+                
+                # Record this type was tried
+                used_types_for_word.append(current_clue_type)
+                
+                # Track variant number
+                result.variant_number = variant_number
+                
+                batch_results.append(result)
+                all_attempts.append(result)
+                
+                # Add to passed clues if successful
+                if result.passed:
+                    word_variants_collected += 1
+                    passed_clues.append(result)
+                    logger.info(f"✓ SUCCESS: {word} variant {variant_number} of {variants_per_word} ({len(passed_clues)}/{target_count})")
+                    
+                    # Check if we've reached target
+                    if len(passed_clues) >= target_count:
+                        break
+                else:
+                    # Variant failed, check if we should continue
+                    if attempts_for_this_word >= max_attempts_per_word:
+                        logger.info(f"  {word}: Max attempts ({max_attempts_per_word}) reached, moving to next word")
+                    else:
+                        logger.info(f"  {word} variant {variant_number}: Failed, trying next type...")
+            
+            # Check if overall target reached (after possibly collecting multiple variants)
+            if len(passed_clues) >= target_count:
+                break
         
         executor.shutdown(wait=True)
         
@@ -1026,40 +1126,101 @@ def main():
 
 
 if __name__ == "__main__":
+    # Parse command-line arguments
+    parser = argparse.ArgumentParser(
+        description="Cryptic Clue Generator with Mechanical-First Strategy",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  python main.py --target 5
+  python main.py --target 20 --temperature 0.7
+  python main.py --target 10 --variants 3
+  python main.py --target 15 --temperature 0.8 --variants 2 --types "Anagram,Charade"
+        """
+    )
+    
+    parser.add_argument(
+        "--target",
+        type=int,
+        default=5,
+        help="Number of valid clues to generate (default: 5)"
+    )
+    
+    parser.add_argument(
+        "--temperature",
+        type=float,
+        default=0.5,
+        help="Temperature for generation (0.0-1.0, default: 0.5). Higher values increase variety."
+    )
+    
+    parser.add_argument(
+        "--variants",
+        type=int,
+        default=1,
+        help="Number of clue variants per word (default: 1). Multiple variants use forced type diversification."
+    )
+    
+    parser.add_argument(
+        "--types",
+        type=str,
+        default=None,
+        help='Filter by clue types (comma-separated). E.g., "Anagram,Charade" or "Hidden Word"'
+    )
+    
+    parser.add_argument(
+        "--batch-size",
+        type=int,
+        default=10,
+        help="Words to process per batch (default: 10)"
+    )
+    
+    parser.add_argument(
+        "--mode",
+        type=str,
+        choices=["factory", "batch"],
+        default="factory",
+        help="Processing mode: factory (endless until target) or batch (predefined words)"
+    )
+    
+    args = parser.parse_args()
+    
+    # Validate temperature
+    if not (0.0 <= args.temperature <= 1.0):
+        print(f"ERROR: Temperature must be between 0.0 and 1.0, got {args.temperature}")
+        sys.exit(1)
+    
+    # Validate variants
+    if args.variants < 1:
+        print(f"ERROR: Variants must be at least 1, got {args.variants}")
+        sys.exit(1)
+    
+    # Parse types filter
+    required_types = None
+    if args.types:
+        required_types = [t.strip() for t in args.types.split(',') if t.strip()]
+        print(f"Type filter: {', '.join(required_types)}")
+    
     print("\n" + "="*80)
     print("CRYPTIC CLUE GENERATOR")
     print("="*80 + "\n")
     
-    print("Select mode:")
-    print("  1. Fixed Batch Mode (10 predefined words)")
-    print("  2. Clue Factory Mode (automated word selection until target reached)")
+    print(f"Configuration:")
+    print(f"  Target clues: {args.target}")
+    print(f"  Temperature: {args.temperature}")
+    print(f"  Variants per word: {args.variants}")
+    if required_types:
+        print(f"  Type filter: {', '.join(required_types)}")
+    print(f"  Mode: {args.mode}")
+    print()
     
-    mode = input("\nEnter choice (1 or 2, default=2): ").strip() or "2"
-    
-    if mode == "1":
-        main()
-    else:
-        # Factory mode
-        target = input("\nHow many valid clues to generate? (default=20): ").strip()
-        target_count = int(target) if target.isdigit() else 20
-        
-        # Ask about mechanism filtering
-        print("\nMechanism Filter (optional):")
-        print("Available types: Anagram, Charade, Hidden Word, Container, Reversal, Homophone, Double Definition")
-        print("Examples: 'Charade,Container' or 'Anagram' or leave blank for all types")
-        filter_input = input("\nFilter by clue types (comma-separated, or Enter for all): ").strip()
-        
-        required_types = None
-        if filter_input:
-            # Parse comma-separated types
-            required_types = [t.strip() for t in filter_input.split(',') if t.strip()]
-            print(f"Filter activated: {', '.join(required_types)}")
-        else:
-            print("No filter: All clue types allowed")
-        
+    if args.mode == "factory":
         factory_run(
-            target_count=target_count,
-            batch_size=10,
+            target_count=args.target,
+            batch_size=args.batch_size,
             max_concurrent=5,
+            temperature=args.temperature,
+            variants_per_word=args.variants,
             required_types=required_types
         )
+    else:
+        main()

@@ -111,6 +111,8 @@ class AuditResult:
     double_duty_feedback: str
     indicator_fairness_check: bool
     indicator_fairness_feedback: str
+    identity_check: bool = True
+    identity_feedback: str = ""
     fodder_presence_check: bool = True
     fodder_presence_feedback: str = ""
     filler_check: bool = True
@@ -139,6 +141,8 @@ class AuditResult:
             "double_duty_feedback": self.double_duty_feedback,
             "indicator_fairness_check": self.indicator_fairness_check,
             "indicator_fairness_feedback": self.indicator_fairness_feedback,
+            "identity_check": self.identity_check,
+            "identity_feedback": self.identity_feedback,
             "fodder_presence_check": self.fodder_presence_check,
             "fodder_presence_feedback": self.fodder_presence_feedback,
             "filler_check": self.filler_check,
@@ -164,13 +168,15 @@ class XimeneanAuditor:
     # Use logic model for careful reasoning in auditing
     MODEL_ID = os.getenv("LOGIC_MODEL_ID", os.getenv("MODEL_ID"))
     
-    def __init__(self, timeout: float = 30.0):
+    def __init__(self, timeout: float = 30.0, temperature: float = 0.5):
         """Initialize the Auditor with Portkey client.
         
         Args:
             timeout: Request timeout in seconds (default: 30.0).
+            temperature: Temperature for generation (0.0-1.0, default: 0.5).
         """
         self.api_key = os.getenv("PORTKEY_API_KEY")
+        self.temperature = temperature
         
         if not self.api_key:
             raise ValueError(
@@ -184,7 +190,69 @@ class XimeneanAuditor:
             timeout=timeout
         )
         
-        logger.info(f"Auditor initialized with model: {self.MODEL_ID} [LOGIC tier]")
+        # Initialize dictionary with robust error handling
+        self.enchant_dict = None
+        self._init_dictionary()
+        
+        logger.info(f"Auditor initialized with model: {self.MODEL_ID} [LOGIC tier] (temperature: {self.temperature})")
+    
+    def _init_dictionary(self):
+        """Initialize enchant dictionary with fallback handling."""
+        try:
+            import enchant
+            
+            # Try British English first
+            try:
+                self.enchant_dict = enchant.request_dict("en_GB")
+                logger.info("Enchant dictionary initialized: en_GB")
+            except (AttributeError, Exception) as e:
+                logger.warning(f"Failed to load en_GB dictionary: {e}")
+                try:
+                    # Fallback to US English
+                    self.enchant_dict = enchant.request_dict("en_US")
+                    logger.info("Enchant dictionary initialized: en_US (fallback)")
+                except (AttributeError, Exception) as e2:
+                    logger.warning(f"Failed to load en_US dictionary: {e2}")
+                    self.enchant_dict = None
+        except ImportError:
+            logger.warning("Enchant library not available - word validation will use fallback")
+            self.enchant_dict = None
+    
+    def is_word(self, word: str) -> bool:
+        """Safe word validation with fallback.
+        
+        Args:
+            word: Word to check
+            
+        Returns:
+            True if word is valid or validation unavailable, False if definitely invalid
+        """
+        if not word or len(word) < 2:
+            return False
+        
+        # If dictionary is available, use it
+        if self.enchant_dict:
+            try:
+                return self.enchant_dict.check(word)
+            except Exception as e:
+                logger.debug(f"Dictionary check failed for '{word}': {e}")
+                # Fall through to basic validation
+        
+        # Fallback: Basic pattern validation
+        # Reject obvious gibberish patterns
+        gibberish_patterns = [
+            r'^[bcdfghjklmnpqrstvwxyz]{5,}$',  # 5+ consonants only
+            r'^[aeiou]{4,}$',  # 4+ vowels only
+            r'[^a-z]',  # Non-alphabetic characters
+        ]
+        
+        word_lower = word.lower()
+        for pattern in gibberish_patterns:
+            if re.search(pattern, word_lower):
+                return False
+        
+        # If not obviously gibberish, accept it (permissive fallback)
+        return True
     
     def _check_direction(self, clue_json: Dict) -> Tuple[bool, str]:
         """
@@ -247,6 +315,13 @@ MECHANISM: "{wordplay_parts.get('mechanism', '')}"
 
 A 'Double Duty' error is VERY SPECIFIC: it only occurs if a word is being used as a mechanical instruction (indicator) AND is also the only word providing the definition.
 
+CRITICAL FODDER VALIDATION:
+- Cross-reference the FODDER field against the CLUE text.
+- If the fodder contains a single letter (like 'a') or a word that is NOT present in the original clue, you MUST fail the clue immediately.
+- Do not allow 'near-miss' anagrams where the solver must infer fodder words.
+- Example FAIL: If fodder is "listen" but the clue says "Confused hearing sounds" (no "listen" word), FAIL.
+- Example FAIL: If fodder is just "a" (single letter), FAIL immediately.
+
 CRITICAL: If the definition is a synonym of the answer, that is NOT double duty. Double duty only occurs when a wordplay indicator is also the definition.
 
 Critical Rules:
@@ -260,8 +335,12 @@ Examples:
 - PASS: "Supply food or look after someone's needs (5)" - multi-word definition, no indicator (double definition clue)
 - PASS: "Confused enlist soldiers to be quiet (6)" - "Confused" is indicator, "be quiet" is definition
 - FAIL: "Shredded lettuce" - "shredded" is BOTH the anagram indicator AND the definition meaning "torn"
+- FAIL: "Auditor with listen mixed" (answer AUTHOR) - "listen" is not in the clue, fodder invalid
+- FAIL: "A is confused" - Fodder "a" is just one letter, not valid
 
-Remember: Only flag FAIL if the SAME SINGLE WORD acts as both the mechanical instruction AND the definition.
+Remember: 
+1. Only flag FAIL for double duty if the SAME SINGLE WORD acts as both mechanical instruction AND definition.
+2. ALSO flag FAIL if any fodder word is missing from the clue or if fodder is just a single letter.
 
 Answer with ONLY:
 PASS: [explanation] if no double duty is detected
@@ -271,6 +350,7 @@ FAIL: [explanation] if double duty is detected"""
             response = self.client.chat.completions.create(
                 model=self.MODEL_ID,
                 max_tokens=200,
+                temperature=self.temperature,
                 messages=[
                     {"role": "system", "content": "You are an expert Ximenean crossword auditor."},
                     {"role": "user", "content": prompt}
@@ -488,16 +568,111 @@ FAIL: [explanation] if double duty is detected"""
                 )
                 return True, feedback
     
+    def _check_identity_constraint(self, clue_json: Dict) -> Tuple[bool, str]:
+        """Check that the answer does not appear in the wordplay fodder.
+        
+        IDENTITY CONSTRAINT:
+        - The answer (or common variants) must not appear in the fodder
+        - For Hidden Words: answer must span at least two different words
+        - Prevents lazy clues where the answer hides within itself
+        
+        Returns:
+            (passed, feedback)
+        """
+        answer = clue_json.get("answer", "").upper()
+        wordplay_parts = clue_json.get("wordplay_parts", {})
+        clue_type = clue_json.get("type", "").lower()
+        
+        # Extract fodder based on clue type
+        fodder = ""
+        if "fodder" in wordplay_parts:
+            fodder = wordplay_parts.get("fodder", "")
+        elif "parts" in wordplay_parts and isinstance(wordplay_parts["parts"], list):
+            fodder = " ".join(wordplay_parts["parts"])
+        elif "outer" in wordplay_parts and "inner" in wordplay_parts:
+            fodder = f"{wordplay_parts.get('outer', '')} {wordplay_parts.get('inner', '')}"
+        
+        if not fodder:
+            return True, "[PASS] No fodder to check"
+        
+        # Normalize for comparison
+        normalized_fodder = re.sub(r'[^a-zA-Z]', '', fodder).lower()
+        normalized_answer = re.sub(r'[^a-zA-Z]', '', answer).lower()
+        
+        # Check if answer appears in fodder
+        if normalized_answer in normalized_fodder:
+            return False, (
+                f"[FAIL] Identity constraint violated: answer '{answer}' appears in fodder '{fodder}'. "
+                "The answer must not appear in the wordplay material."
+            )
+        
+        # Check common variants
+        if len(normalized_answer) > 3:
+            variants = [
+                normalized_answer + 's',
+                normalized_answer + 'ed',
+                normalized_answer + 'ing'
+            ]
+            if normalized_answer.endswith('e'):
+                variants.append(normalized_answer[:-1] + 'ed')
+                variants.append(normalized_answer[:-1] + 'ing')
+            
+            for variant in variants:
+                if variant in normalized_fodder:
+                    return False, (
+                        f"[FAIL] Identity constraint violated: answer variant '{variant}' appears in fodder '{fodder}'. "
+                        "Common word forms of the answer must not appear in the wordplay."
+                    )
+        
+        # Special check for Hidden Word clues
+        if "hidden" in clue_type:
+            fodder_words = fodder.split()
+            if len(fodder_words) == 1 and normalized_fodder == normalized_answer:
+                return False, (
+                    f"[FAIL] Identity constraint violated: Hidden Word fodder '{fodder}' IS the answer itself. "
+                    "The answer must be concealed across at least two different words."
+                )
+        
+        return True, f"[PASS] Identity constraint satisfied: '{answer}' not found in fodder"
+    
     def _check_narrative_integrity(self, clue_json: Dict) -> Tuple[bool, str]:
         """Check that the surface reading is natural English, not a literal listing.
         
         THE NO-GIBBERISH RULE:
         - Clues must not contain standalone single letters or fragments (e.g., "with n, e, w")
         - All components must use standard cryptic abbreviations or real words
+        - For anagrams specifically: fodder must consist of real English words, not fragments
         
         Returns:
             (passed, feedback)
         """
+        clue_type = clue_json.get("type", "").lower()
+        
+        # Special check for anagram fodder quality
+        if "anagram" in clue_type and self.enchant_dict:
+            wordplay_parts = clue_json.get("wordplay_parts", {})
+            fodder = wordplay_parts.get("fodder", "")
+            
+            if fodder:
+                words = fodder.lower().split()
+                valid_abbreviations = {'n', 's', 'e', 'w', 'l', 'r', 'u', 'o', 'er', 'ed', 're'}
+                
+                invalid_words = []
+                for word in words:
+                    # Skip very short abbreviations
+                    if len(word) <= 2 and word in valid_abbreviations:
+                        continue
+                    # Check dictionary
+                    if not self.enchant_dict.check(word):
+                        invalid_words.append(word)
+                
+                if invalid_words:
+                    feedback = (
+                        f"[FAIL] Anagram fodder contains non-dictionary gibberish: {', '.join(invalid_words)}. "
+                        f"Ximenean standard requires all anagram fodder to be real English words. "
+                        f"Even if the letters match mathematically, gibberish fodder awards a score of 0.0."
+                    )
+                    return False, feedback
         clue_text = clue_json.get("clue", "").lower()
         
         # Pattern 1: Check for comma-separated single letters (literal listing)
@@ -612,27 +787,22 @@ FAIL: [explanation] if double duty is detected"""
             # Pattern: fodder is usually a single word for reversals
             fodder_words = re.findall(r'\b[a-z]+\b', fodder.lower())
             
-            try:
-                import enchant
-                d = enchant.Dict("en_US")
-                non_words = []
-                
-                for word in fodder_words:
-                    if len(word) > 2 and not d.check(word):
-                        # Not a valid English word
-                        non_words.append(word)
-                
-                if non_words:
-                    feedback = (
-                        f"[FAIL] Non-word fodder detected: {', '.join(non_words)}. "
-                        "NO NON-WORDS AS FODDER: Every piece of fodder must be a real English word. "
-                        "For reversals, both original and reversed must be valid words. "
-                        "If reversal creates non-word (e.g., 'nettab', 'kcits'), choose DIFFERENT mechanism."
-                    )
-                    return False, feedback
-            except Exception as e:
-                # Enchant not available, skip word validation
-                pass
+            # Use safe word validation
+            non_words = []
+            
+            for word in fodder_words:
+                if len(word) > 2 and not self.is_word(word):
+                    # Not a valid English word
+                    non_words.append(word)
+            
+            if non_words:
+                feedback = (
+                    f"[FAIL] Non-word fodder detected: {', '.join(non_words)}. "
+                    "NO NON-WORDS AS FODDER: Every piece of fodder must be a real English word. "
+                    "For reversals, both original and reversed must be valid words. "
+                    "If reversal creates non-word (e.g., 'nettab', 'kcits'), choose DIFFERENT mechanism."
+                )
+                return False, feedback
         
         # Check 3: Look for non-word patterns in mechanism description
         # Patterns like "reverse of nettab" or "anagram of kcits"
@@ -646,18 +816,13 @@ FAIL: [explanation] if double duty is detected"""
             matches = re.findall(pattern, mechanism)
             for match in matches:
                 if len(match) > 3:  # Only check substantial words
-                    try:
-                        import enchant
-                        d = enchant.Dict("en_US")
-                        if not d.check(match):
-                            feedback = (
-                                f"[FAIL] Non-word in mechanism: '{match}'. "
-                                "Surface legitimacy check: Wordplay cannot force non-words into the clue. "
-                                "Choose a different mechanism that uses real English words only."
-                            )
-                            return False, feedback
-                    except:
-                        pass
+                    if not self.is_word(match):
+                        feedback = (
+                            f"[FAIL] Non-word in mechanism: '{match}'. "
+                            "Surface legitimacy check: Wordplay cannot force non-words into the clue. "
+                            "Choose a different mechanism that uses real English words only."
+                        )
+                        return False, feedback
         
         feedback = "[PASS] All abbreviations are standard Top 50 priority types."
         return True, feedback
@@ -698,95 +863,44 @@ FAIL: [explanation] if double duty is detected"""
         if not words_to_check:
             return True, "[PASS] No substantial words in fodder to validate."
         
-        # Try to validate words using enchant library
-        try:
-            import enchant
-            
-            # Use request_dict for proper pyenchant syntax
-            try:
-                d = enchant.request_dict("en_GB")  # British English primary
-            except enchant.Error:
-                try:
-                    d = enchant.request_dict("en_US")  # US English fallback
-                except enchant.Error:
-                    raise ImportError("No enchant dictionary available")
-            
-            non_words = []
-            
-            for word in words_to_check:
-                # Check if word is valid
-                if not d.check(word):
-                    # Try alternate spelling if British/US primary failed
-                    try:
-                        d_alt = enchant.request_dict("en_US" if "GB" in str(d) else "en_GB")
-                        if not d_alt.check(word):
-                            non_words.append(word)
-                    except:
-                        non_words.append(word)
-            
-            if non_words:
-                feedback = (
-                    f"[FAIL] Non-dictionary words detected in fodder: {', '.join(non_words)}. "
-                    "REAL-WORD DICTIONARY CONSTRAINT: All mechanical fodder must be legitimate English words. "
-                )
-                
-                # Specific guidance by clue type
-                if clue_type in ["reversal", "reverse"]:
-                    feedback += (
-                        "For Reversals, both the fodder word AND its reverse must be valid. "
-                        "Example: 'lager' (valid) → REGAL (valid) ✓. "
-                        "Counter-example: 'amhtsa' (gibberish) → ASTHMA ✗. "
-                        "MECHANISM PIVOT REQUIRED: Choose Charade, Hidden Word, or Anagram instead."
-                    )
-                elif clue_type in ["container", "insertion"]:
-                    feedback += (
-                        "For Containers, both outer and inner words must be dictionary-valid. "
-                        "Example: IN inside PAT = PAINT ✓. "
-                        "Counter-example: 'nettab' containing EN ✗."
-                    )
-                else:
-                    feedback += (
-                        "Every piece of fodder must be defensible via standard English dictionaries "
-                        "(Oxford, Merriam-Webster, etc.)."
-                    )
-                
-                return False, feedback
-                
-        except (ImportError, AttributeError) as e:
-            # Enchant library not available or dictionary not available - use basic validation
-            logger.warning(f"enchant library not available for word validation: {e}")
-            logger.info("Falling back to basic pattern-based validation")
-            
-            # Fallback: Check for obvious gibberish patterns
-            gibberish_patterns = [
-                r'[bcdfghjklmnpqrstvwxyz]{5,}',  # 5+ consonants in a row
-                r'[aeiou]{4,}',  # 4+ vowels in a row
-            ]
-            
-            # Also check for very short words (likely not real words if < 2 letters for Reversals)
-            suspicious_words = []
-            for word in words_to_check:
-                # Flag words with suspicious consonant/vowel patterns
-                for pattern in gibberish_patterns:
-                    if re.search(pattern, word):
-                        suspicious_words.append(word)
-                        break
-                # For reversals, also flag if word is too short to be meaningful
-                if clue_type in ["reversal", "reverse"] and len(word) < 3:
-                    if word not in suspicious_words:
-                        suspicious_words.append(word)
-            
-            if suspicious_words:
-                feedback = (
-                    f"[WARN] Potentially non-standard words detected: {', '.join(suspicious_words)}. "
-                    "Install pyenchant for full dictionary validation: pip install pyenchant"
-                )
-                return True, feedback  # Warning only without full validation
+        # Validate words using safe dictionary wrapper
+        non_words = []
         
-        except Exception as e:
-            logger.error(f"Word validation error: {e}")
-            # Don't fail the audit due to technical issues
-            return True, f"[PASS] Word validation skipped due to error: {e}"
+        for word in words_to_check:
+            if not self.is_word(word):
+                non_words.append(word)
+        
+        if non_words:
+            feedback = (
+                f"[FAIL] Non-dictionary words detected in fodder: {', '.join(non_words)}. "
+                "REAL-WORD DICTIONARY CONSTRAINT: All mechanical fodder must be legitimate English words. "
+            )
+            
+            # Specific guidance by clue type
+            if clue_type in ["reversal", "reverse"]:
+                feedback += (
+                    "For Reversals, both the fodder word AND its reverse must be valid. "
+                    "Example: 'lager' (valid) → REGAL (valid) ✓. "
+                    "Counter-example: 'amhtsa' (gibberish) → ASTHMA ✗. "
+                    "MECHANISM PIVOT REQUIRED: Choose Charade, Hidden Word, or Anagram instead."
+                )
+            elif clue_type in ["container", "insertion"]:
+                feedback += (
+                    "For Containers, both outer and inner words must be dictionary-valid. "
+                    "Example: IN inside PAT = PAINT ✓. "
+                    "Counter-example: 'nettab' containing EN ✗."
+                )
+            else:
+                feedback += (
+                    "Every piece of fodder must be defensible via standard English dictionaries "
+                    "(Oxford, Merriam-Webster, etc.)."
+                )
+            
+            # Add note if using fallback validation
+            if not self.enchant_dict:
+                feedback += " (Note: Using basic validation - install pyenchant for full dictionary checking)"
+            
+            return False, feedback
         
         feedback = "[PASS] All fodder words are valid dictionary entries."
         return True, feedback
@@ -1029,22 +1143,25 @@ FAIL: [explanation] if double duty is detected"""
         # Flag 3: Indicator fairness check
         fairness_passed, fairness_feedback = self._check_indicator_fairness(clue_json)
         
-        # Flag 4: Fodder presence check (NEW - Strict Ximenean)
+        # Flag 4: Identity constraint check (NEW - Anti-Lazy Clue Detection)
+        identity_passed, identity_feedback = self._check_identity_constraint(clue_json)
+        
+        # Flag 5: Fodder presence check (NEW - Strict Ximenean)
         fodder_passed, fodder_feedback = self._check_fodder_presence(clue_json)
         
-        # Flag 5: Filler words check (NEW - Strict Ximenean)
+        # Flag 6: Filler words check (NEW - Strict Ximenean)
         filler_passed, filler_feedback = self._check_filler_words(clue_json)
         
-        # Flag 6: Indicator grammar check (NEW - Strict Ximenean)
+        # Flag 7: Indicator grammar check (NEW - Strict Ximenean)
         grammar_passed, grammar_feedback = self._check_indicator_grammar(clue_json)
         
-        # Flag 7: Narrative integrity check (NEW - Advanced Narrative Masking)
+        # Flag 8: Narrative integrity check (NEW - Advanced Narrative Masking)
         narrative_passed, narrative_feedback = self._check_narrative_integrity(clue_json)
         
-        # Flag 8: Obscurity check (NEW - Top-Tier Cryptic Standards)
+        # Flag 9: Obscurity check (NEW - Top-Tier Cryptic Standards)
         obscurity_passed, obscurity_feedback = self._check_obscurity(clue_json)
         
-        # Flag 9: Word validity check (NEW - Real-Word Dictionary Constraint)
+        # Flag 10: Word validity check (NEW - Real-Word Dictionary Constraint)
         word_validity_passed, word_validity_feedback = self._check_word_validity(clue_json)
         
         # Calculate fairness score (0-1)
@@ -1052,6 +1169,7 @@ FAIL: [explanation] if double duty is detected"""
             direction_passed,
             double_duty_passed,
             fairness_passed,
+            identity_passed,
             fodder_passed,
             filler_passed,
             grammar_passed,
@@ -1066,6 +1184,7 @@ FAIL: [explanation] if double duty is detected"""
             'direction': direction_passed,
             'double_duty': double_duty_passed,
             'fairness': fairness_passed,
+            'identity': identity_passed,
             'fodder': fodder_passed,
             'filler': filler_passed,
             'grammar': grammar_passed,
@@ -1094,6 +1213,8 @@ FAIL: [explanation] if double duty is detected"""
             double_duty_feedback=double_duty_feedback,
             indicator_fairness_check=fairness_passed,
             indicator_fairness_feedback=fairness_feedback,
+            identity_check=identity_passed,
+            identity_feedback=identity_feedback,
             fodder_presence_check=fodder_passed,
             fodder_presence_feedback=fodder_feedback,
             filler_check=filler_passed,

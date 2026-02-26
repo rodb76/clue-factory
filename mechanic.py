@@ -14,6 +14,25 @@ from typing import Dict, Tuple, Optional
 # to avoid duplicate handlers when modules are imported
 logger = logging.getLogger(__name__)
 
+# Initialize enchant dictionary for real-word validation
+_enchant_dict = None
+try:
+    import enchant
+    try:
+        _enchant_dict = enchant.request_dict("en_GB")
+        logger.info("Enchant dictionary initialized: en_GB")
+    except Exception as e:
+        logger.warning(f"Failed to load en_GB dictionary: {e}")
+        try:
+            _enchant_dict = enchant.request_dict("en_US")
+            logger.info("Enchant dictionary initialized: en_US (fallback)")
+        except Exception as e2:
+            logger.warning(f"Failed to load en_US dictionary: {e2}")
+            _enchant_dict = None
+except ImportError:
+    logger.warning("Enchant library not available - real-word validation will be skipped")
+    _enchant_dict = None
+
 
 class ValidationResult:
     """Result of a clue validation check."""
@@ -42,6 +61,54 @@ def normalize_text(text: str) -> str:
     """
     # Remove everything except letters and convert to lowercase
     return re.sub(r'[^a-zA-Z]', '', text).lower()
+
+
+def check_identity_constraint(fodder: str, answer: str) -> ValidationResult:
+    """
+    Check that the answer (or common variants) does not appear in the fodder.
+    This prevents lazy clues where the answer hides within itself.
+    
+    Args:
+        fodder: The fodder text to check.
+        answer: The answer word.
+    
+    Returns:
+        ValidationResult indicating if identity constraint is satisfied.
+    """
+    normalized_fodder = normalize_text(fodder)
+    normalized_answer = normalize_text(answer)
+    
+    # Check if answer appears in fodder
+    if normalized_answer in normalized_fodder:
+        return ValidationResult(
+            False,
+            f"Identity constraint violated: answer '{answer}' appears in fodder '{fodder}'",
+            {"fodder": fodder, "answer": answer}
+        )
+    
+    # Check common variants (plural, past tense)
+    variants = []
+    if len(answer) > 3:
+        variants.append(normalized_answer + 's')  # plural
+        variants.append(normalized_answer + 'ed')  # past tense
+        variants.append(normalized_answer + 'ing')  # present participle
+        if normalized_answer.endswith('e'):
+            variants.append(normalized_answer[:-1] + 'ed')  # e.g., bake -> baked
+            variants.append(normalized_answer[:-1] + 'ing')  # e.g., bake -> baking
+    
+    for variant in variants:
+        if variant in normalized_fodder:
+            return ValidationResult(
+                False,
+                f"Identity constraint violated: answer variant '{variant}' appears in fodder '{fodder}'",
+                {"fodder": fodder, "answer": answer, "variant": variant}
+            )
+    
+    return ValidationResult(
+        True,
+        f"Identity constraint satisfied: answer not in fodder",
+        {"fodder": fodder, "answer": answer}
+    )
 
 
 def validate_length(answer: str, enumeration: Optional[str] = None) -> ValidationResult:
@@ -80,6 +147,7 @@ def validate_length(answer: str, enumeration: Optional[str] = None) -> Validatio
 def validate_anagram(fodder: str, answer: str) -> ValidationResult:
     """
     Validate that the fodder is a valid anagram of the answer.
+    Also checks that all words in the fodder are real English words.
     
     Args:
         fodder: The letters to be rearranged.
@@ -88,27 +156,85 @@ def validate_anagram(fodder: str, answer: str) -> ValidationResult:
     Returns:
         ValidationResult indicating if fodder is an anagram of answer.
     """
+    # First check: Identity constraint (answer must not appear in fodder)
+    identity_check = check_identity_constraint(fodder, answer)
+    if not identity_check.is_valid:
+        return identity_check
+    
+    # Second check: Real-word validation for fodder
+    if _enchant_dict:
+        # Split fodder into words and validate each
+        words = fodder.lower().split()
+        # Common cryptic abbreviations that might not be in dictionary
+        valid_abbreviations = {'n', 's', 'e', 'w', 'l', 'r', 'u', 'o', 'er', 'ed', 're'}
+        
+        invalid_words = []
+        for word in words:
+            # Skip very short words and known abbreviations
+            if len(word) <= 2 and word in valid_abbreviations:
+                continue
+            # Check if word is in dictionary
+            if not _enchant_dict.check(word):
+                invalid_words.append(word)
+        
+        if invalid_words:
+            return ValidationResult(
+                False,
+                f"Fodder contains non-dictionary words: {', '.join(invalid_words)}. "
+                f"All anagram fodder must use real English words.",
+                {"invalid_words": invalid_words, "fodder": fodder}
+            )
+    
+    # Third check: Letter count validation
     normalized_fodder = normalize_text(fodder)
     normalized_answer = normalize_text(answer)
     
-    if sorted(normalized_fodder) == sorted(normalized_answer):
+    # Strip spaces and check exact letter match
+    f_letters = sorted(normalized_fodder)
+    a_letters = sorted(normalized_answer)
+    
+    if f_letters == a_letters:
         return ValidationResult(
             True, 
             f"Valid anagram: '{fodder}' → '{answer}'",
             {"fodder": normalized_fodder, "answer": normalized_answer}
         )
     else:
-        # Provide detailed feedback
-        fodder_letters = sorted(normalized_fodder)
-        answer_letters = sorted(normalized_answer)
+        # Calculate missing and extra letters for detailed feedback
+        from collections import Counter
+        fodder_counter = Counter(normalized_fodder)
+        answer_counter = Counter(normalized_answer)
+        
+        missing = []
+        extra = []
+        
+        # Find missing letters (in answer but not in fodder)
+        for letter, count in answer_counter.items():
+            fodder_count = fodder_counter.get(letter, 0)
+            if fodder_count < count:
+                missing.extend([letter] * (count - fodder_count))
+        
+        # Find extra letters (in fodder but not in answer)
+        for letter, count in fodder_counter.items():
+            answer_count = answer_counter.get(letter, 0)
+            if count > answer_count:
+                extra.extend([letter] * (count - answer_count))
+        
+        # Build detailed error message
+        error_parts = [f"Invalid anagram: fodder letters do not exactly match answer letters."]
+        if missing:
+            error_parts.append(f"Missing letters: {', '.join(sorted(missing))}")
+        if extra:
+            error_parts.append(f"Extra letters: {', '.join(sorted(extra))}")
+        
         return ValidationResult(
             False,
-            f"Invalid anagram: '{fodder}' does not rearrange to '{answer}'",
+            " | ".join(error_parts),
             {
-                "fodder_letters": fodder_letters,
-                "answer_letters": answer_letters,
-                "fodder_sorted": ''.join(fodder_letters),
-                "answer_sorted": ''.join(answer_letters)
+                "fodder_sorted": ''.join(f_letters),
+                "answer_sorted": ''.join(a_letters),
+                "missing_letters": missing,
+                "extra_letters": extra
             }
         )
 
@@ -116,6 +242,7 @@ def validate_anagram(fodder: str, answer: str) -> ValidationResult:
 def validate_hidden_word(fodder: str, answer: str) -> ValidationResult:
     """
     Validate that the answer is hidden within the fodder string.
+    Also checks that the answer is concealed across at least two words.
     
     Args:
         fodder: The text containing the hidden word.
@@ -124,6 +251,30 @@ def validate_hidden_word(fodder: str, answer: str) -> ValidationResult:
     Returns:
         ValidationResult indicating if answer is hidden in fodder.
     """
+    # First check: Identity constraint - answer must span multiple words
+    fodder_words = fodder.split()
+    if len(fodder_words) == 1:
+        # Single word fodder - check if it IS the answer
+        if normalize_text(fodder) == normalize_text(answer):
+            return ValidationResult(
+                False,
+                f"Identity constraint violated: Hidden word fodder '{fodder}' is the answer itself. "
+                f"The answer must be concealed across at least two words.",
+                {"fodder": fodder, "answer": answer}
+            )
+    
+    # Second check: Answer appears as a complete standalone word in multi-word fodder
+    answer_lower = answer.lower()
+    fodder_words_lower = [w.lower() for w in fodder_words]
+    if answer_lower in fodder_words_lower:
+        return ValidationResult(
+            False,
+            f"Identity constraint violated: Answer '{answer}' appears as a standalone word in fodder '{fodder}'. "
+            f"The answer must be concealed across word boundaries, not present as a complete word.",
+            {"fodder": fodder, "answer": answer}
+        )
+    
+    # Third check: Hidden word validation
     normalized_fodder = normalize_text(fodder)
     normalized_answer = normalize_text(answer)
     

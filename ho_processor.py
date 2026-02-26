@@ -169,14 +169,13 @@ class HoClueResult:
     
     # Reverse-engineered components
     clue_type: str
-    definition: str
     fodder: str
     indicator: str
     mechanism: str
+    wordplay_parts: Dict[str, str]  # {"type", "fodder", "indicator", "mechanism"}
     
     # Enrichment
-    explanation: str
-    hint: str
+    explanation: Dict[str, object]  # Nested dict: {"hints": {"indicators", "fodder", "definition"}, "full_breakdown": str}
     
     # Audit metrics
     ximenean_score: float
@@ -189,8 +188,15 @@ class HoClueResult:
     surface_model: str
     
     def to_dict(self) -> Dict:
-        """Convert to dictionary for JSON serialization."""
-        return asdict(self)
+        """Convert to dictionary for JSON serialization, mapping to main.py schema."""
+        d = asdict(self)
+        # Map answer → word
+        d['word'] = d.pop('answer')
+        # Add passed field (ximenean_score > 0.7)
+        d['passed'] = d['ximenean_score'] > 0.7
+        # Remove fields not in main.py output if needed
+        # (optionally, keep all for compatibility)
+        return d
 
 
 class ReverseEngineerAgent:
@@ -255,12 +261,13 @@ class ReverseEngineerAgent:
         logger.error(f"Failed to extract JSON from response: {response_text[:200]}")
         return None
     
-    def deconstruct_clue(self, clue: str, answer: str) -> Optional[Dict]:
+    def deconstruct_clue(self, clue: str, answer: str, original_definition: Optional[str] = None) -> Optional[Dict]:
         """Reverse-engineer a cryptic clue to identify its components.
         
         Args:
             clue: The cryptic clue text.
             answer: The answer word.
+            original_definition: The original definition from the dataset (if available).
         
         Returns:
             Dictionary with clue_type, definition, fodder, indicator, mechanism.
@@ -270,55 +277,57 @@ class ReverseEngineerAgent:
         # Build the prompt with Top 50 Abbreviations reference
         abbrev_reference = "\n".join([f"- {k}: {v}" for k, v in sorted(PRIORITY_ABBREVIATIONS.items())])
         
-        system_prompt = """You are a master cryptic crossword solver and deconstructor. Your task is to reverse-engineer professional cryptic clues by identifying their mechanical components.
+        system_prompt = """
+You are a master cryptic crossword solver and deconstructor. Your task is to reverse-engineer professional cryptic clues by identifying their mechanical components and outputting a JSON object with these fields:
 
-You must determine:
-1. **clue_type**: The primary cryptic mechanism (Anagram, Hidden, Charade, Container, Reversal, Double Definition, Homophone, Acrostic, etc.)
-2. **definition**: The part of the clue that defines the answer (usually at start or end)
-3. **fodder**: The raw material being manipulated (the letters/words that produce the answer)
-4. **indicator**: The instruction word(s) that signal the cryptic operation
-5. **mechanism**: A clear explanation of how the wordplay produces the answer
+1. **clue_type**: The primary cryptic mechanism (Anagram, Hidden, Charade, Container, Reversal, Double Definition, Homophone, Acrostic, Exterior Letters, etc.)
+2. **definition**: The part of the clue that defines the answer (must match original_definition if provided)
+3. **fodder**: A comma-separated list of words or phrases from the clue that provide the raw material for wordplay - MUST be verbatim substrings from the original clue text (NO abbreviations, NO parenthetical notations, NO mechanical instructions)
+4. **indicator**: The instruction word(s) that signal the cryptic operation (must be verbatim from the clue)
+5. **mechanism**: A clear explanation of how the wordplay produces the answer - ALL logical transformations, abbreviations, and arithmetic operations go here
+6. **wordplay_parts**: An object with the following fields:
+     - type: The clue_type
+     - fodder: The verbatim fodder (see above)
+     - indicator: The verbatim indicator (see above)
+     - mechanism: A concise mathematical or logical description (e.g., "sounds like 'rays'" or "Reverse(yard [YD] containing weak [POOR])")
 
-CRITICAL HARDENING RULES (STRICT LITERALISM):
+CRITICAL HARDENING RULES (STRICT EVIDENCE-BASED LITERALISM):
 
-1. **Strict Letter Accounting**: Every single letter of the answer must be mapped to a specific word or abbreviation present in the clue. Do not skip letters or invent filler. Show the exact letter-by-letter correspondence in your mechanism.
-
-2. **Acrostic Priority Check**: If the clue contains "initial," "at first," "starting to," "originally," "leaders," "heads," or similar first-letter indicators, you MUST first test if taking the first letters of adjacent words spells the answer. Only move to other mechanisms if the acrostic check fails completely.
-
-3. **Prohibition of External Synonyms**: Do not use words in your mechanism or fodder fields that are not present in the clue unless they are standard cryptic abbreviations from the provided list (e.g., O=love, R=take, N=nitrogen).
-   - FORBIDDEN: Using "grandmothers" to explain "nanas" unless "grandmothers" literally appears in the clue
-   - FORBIDDEN: Inventing charade components not present in the clue text
-   - ALLOWED: Standard abbreviations (N=north, O=love, R=take, etc.)
-
-4. **Discrete Components**: Ensure the definition does not overlap with the fodder. If the definition is "fruit," the word "fruit" cannot also be part of the wordplay mechanism.
-
-5. **Self-Correction Step**: Before finalizing the JSON, perform a sanity check by mentally spelling the answer using ONLY your identified fodder and indicators from the actual clue text. If it doesn't match letter-for-letter, reconsider the clue_type. Do not force-fit a mechanism.
-
-ADDITIONAL GUIDELINES:
-- The definition and wordplay must be discrete (no double duty)
-- All letters in the answer must be accounted for
-- Cross-reference with standard cryptic abbreviations when relevant
-- Be precise about which words serve which function
-- Prefer simpler mechanisms over complex ones when both fit
+- The fodder and indicator fields in both the root and wordplay_parts must ONLY contain exact words or phrases found in the original clue (no abbreviations, no transformations, no mechanical instructions, no synonyms, no parentheticals).
+- The mechanism field in wordplay_parts must be a concise, explicit mathematical or logical description of the wordplay (e.g., "Reverse(yard [YD] containing weak [POOR])").
+- The root mechanism field must show the full step-by-step logic, including all abbreviations and transformations.
+- All other hardening and logic rules from previous instructions still apply.
 
 OUTPUT FORMAT: Respond with ONLY a JSON object (no markdown, no explanations):
 {
-  "clue_type": "type name",
-  "definition": "definition text",
-  "fodder": "fodder text",
-  "indicator": "indicator text",
-  "mechanism": "step-by-step explanation"
-}"""
+    "clue_type": "...",
+    "definition": "...",
+    "fodder": "...",
+    "indicator": "...",
+    "mechanism": "...",
+    "wordplay_parts": {
+        "type": "...",
+        "fodder": "...",
+        "indicator": "...",
+        "mechanism": "..."
+    }
+}
+"""
 
+        # Build user prompt with optional original_definition
+        definition_context = ""
+        if original_definition:
+            definition_context = f"\nORIGINAL_DEFINITION (IMMUTABLE ANCHOR): \"{original_definition}\"\n** You MUST use this exact definition in your JSON output. Do not redefine or reinterpret it. **\n"
+        
         user_prompt = f"""Deconstruct this professional cryptic clue:
 
 CLUE: "{clue}"
-ANSWER: {answer} ({len(answer)})
+ANSWER: {answer} ({len(answer)}){definition_context}
 
 TOP 50 CRYPTIC ABBREVIATIONS (for reference):
 {abbrev_reference}
 
-Analyze the clue and provide the JSON breakdown."""
+Analyze the clue following the MANDATORY LOGIC PRIORITY ORDER and provide the JSON breakdown."""
 
         try:
             response = self.client.chat.completions.create(
@@ -402,36 +411,59 @@ class ExplanationAgent:
         
         logger.info(f"ExplanationAgent initialized with model: {self.model_id} [SURFACE tier]")
     
-    def generate_explanation(self, clue: str, answer: str, breakdown: Dict) -> Tuple[str, str]:
-        """Generate hint and full explanation for a deconstructed clue.
-        
+
+    def generate_explanation(self, clue: str, answer: str, breakdown: Dict) -> Dict[str, object]:
+        """Generate a nested explanation dict for a deconstructed clue.
         Args:
             clue: The cryptic clue text.
             answer: The answer word.
             breakdown: Dictionary with clue_type, definition, fodder, indicator, mechanism.
-        
         Returns:
-            Tuple of (hint, full_explanation).
+            Dict with keys: 'hints' (dict) and 'full_breakdown' (str).
         """
-        logger.info(f"Generating explanation for '{answer}'")
-        
-        system_prompt = """You are an educational cryptic crossword explainer. Your task is to generate two types of explanations:
+        logger.info(f"Generating explanation for '{answer}' (nested schema)")
 
-1. **HINT**: An oblique nudge that helps without giving away the full solution (1-2 sentences)
-2. **FULL EXPLANATION**: A complete breakdown showing how the wordplay produces the answer
-
-Your explanations should be:
-- Clear and friendly
-- Educational (teaching the solver how cryptic clues work)
-- Accurate to the mechanical breakdown provided
-
-OUTPUT FORMAT: Respond with ONLY a JSON object:
+        system_prompt = '''You are a cryptic crossword explainer. Generate a JSON object with this structure:
 {
-  "hint": "oblique hint text",
-  "explanation": "full step-by-step breakdown"
-}"""
+  "hints": {
+    "indicators": "Explain the indicator word(s) (e.g., 'back', 'upset'), or explain why there is no indicator (e.g., in Double Definitions).",
+    "fodder": "Describe the raw material being manipulated, using only verbatim words/phrases from the clue (no abbreviations or mechanical instructions).",
+    "definition": "Give a gentle, guided hint toward the definition, without giving away the answer."
+  },
+  "full_breakdown": "A warm, encouraging prose explanation that walks through the magic of how the clue works, weaving in the mechanism/formula."
+}
 
-        user_prompt = f"""Generate explanations for this cryptic clue:
+Rules:
+- 'fodder' must use only exact words/phrases from the clue (verbatim, no abbreviations).
+- 'indicators' must explain the indicator word(s) or why none is present.
+- 'definition' must nudge the solver toward the definition, not give it away.
+- 'full_breakdown' should be a friendly, detailed walkthrough, referencing the mechanism and showing how the answer is constructed.
+
+EXAMPLES:
+For a reversal clue:
+{
+  "hints": {
+    "indicators": "The word 'Back' is our engine here; it tells us to reverse the entire sequence that follows.",
+    "fodder": "Our raw materials are 'yard' and 'weak'.",
+    "definition": "The definition is 'sagging'. Think of something that loses its shape and hangs down low."
+  },
+  "full_breakdown": "This is a clever reversal! We take 'yard' (abbreviated as YD) and wrap it around 'weak' (POOR). When we take that combined unit (YD+POOR) and follow the instruction to go 'Back', it flips into DROOPY!"
+}
+
+For a double definition:
+{
+  "hints": {
+    "indicators": "Notice how there's no traditional indicator word here like 'anagram' or 'hidden in' – that's the key! In a double definition clue, both parts of the clue point directly at the answer from different angles. No wordplay machinery needed; just two separate meanings that converge on one perfect word.",
+    "fodder": "Watch out – there's no 'fodder' to manipulate in the traditional sense! Double definition clues work differently from anagrams or hidden words. The entire clue IS the definition material. We're not rearranging letters or extracting hidden sequences; we're finding a single word that satisfies two completely different meanings.",
+    "definition": "Our definition here is 'Two definitions: 'gentle/loving' and 'offer/bid''. The beauty of this clue is that one word bridges both meanings perfectly. Think about a word that can mean something soft and caring in one context, and a proposal or presentation of terms in another."
+  },
+  "full_breakdown": "This is such an elegant clue! Let's see how it works. You have TWO definitions stacked together: 'Gentle' (suggesting something soft, caring, loving) and 'offer' (suggesting a bid, a proposal, something presented). The magic of a double definition clue is finding one word that genuinely lives in both worlds. TENDER does exactly this! 'Tender' means gentle or affectionate ('tender loving care'), but it also means to offer or submit something formally ('tender a bid' or 'tender a resignation'). There's no anagram, no hidden letters, no indicators – just the elegant wordplay of one word carrying two legitimate, unrelated meanings. Cryptic setters love these because they reward solvers who think about words from multiple angles at once. Your job is simply to find the word where both definitions click into place."
+}
+
+Always return only the JSON object above, with all fields populated.
+'''
+
+        user_prompt = f'''Generate a cryptic clue explanation in the above JSON format.
 
 CLUE: "{clue}"
 ANSWER: {answer}
@@ -442,8 +474,54 @@ BREAKDOWN:
 - Fodder: {breakdown['fodder']}
 - Indicator: {breakdown['indicator']}
 - Mechanism: {breakdown['mechanism']}
+'''
 
-Provide the hint and full explanation in JSON format."""
+        try:
+            response = self.client.chat.completions.create(
+                model=self.model_id,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt}
+                ],
+                temperature=0.7,
+                max_tokens=700
+            )
+
+            if not response.choices or len(response.choices) == 0:
+                logger.error("Empty response from Surface Tier")
+                return {"hints": {"indicators": "Unavailable", "fodder": "Unavailable", "definition": "Unavailable"}, "full_breakdown": "Explanation unavailable"}
+
+            choice = response.choices[0]
+            response_text = None
+
+            # Extract response text
+            if hasattr(choice, 'text') and isinstance(choice.text, str):
+                response_text = choice.text
+            elif hasattr(choice, 'message') and hasattr(choice.message, 'content'):
+                if isinstance(choice.message.content, str):
+                    response_text = choice.message.content
+                elif isinstance(choice.message.content, list):
+                    for content_part in choice.message.content:
+                        if hasattr(content_part, 'text'):
+                            response_text = content_part.text
+                            break
+
+            if not response_text:
+                logger.error("Could not extract response text")
+                return {"hints": {"indicators": "Unavailable", "fodder": "Unavailable", "definition": "Unavailable"}, "full_breakdown": "Explanation unavailable"}
+
+            # Parse JSON from response
+            result_json = self._extract_json_from_response(response_text)
+
+            if result_json and "hints" in result_json and "full_breakdown" in result_json:
+                return result_json
+            else:
+                logger.error("Failed to parse explanation JSON")
+                return {"hints": {"indicators": "Unavailable", "fodder": "Unavailable", "definition": "Unavailable"}, "full_breakdown": "Explanation unavailable"}
+
+        except Exception as e:
+            logger.error(f"Error in generate_explanation for '{answer}': {e}")
+            return {"hints": {"indicators": "Unavailable", "fodder": "Unavailable", "definition": "Unavailable"}, "full_breakdown": "Explanation unavailable"}
 
         try:
             response = self.client.chat.completions.create(
@@ -637,22 +715,26 @@ class HoProcessor:
         logger.info(f"Processing: {clue} -> {answer}")
         
         try:
-            # Step 1: Reverse-engineer the clue
-            breakdown = self.reverse_engineer.deconstruct_clue(clue, answer)
+            # Step 1: Reverse-engineer the clue with original definition anchor
+            breakdown = self.reverse_engineer.deconstruct_clue(
+                clue=clue,
+                answer=answer,
+                original_definition=clue_dict.get('definition')
+            )
             
             if not breakdown:
                 logger.warning(f"Failed to deconstruct clue: {clue}")
                 return None
             
-            # Step 2: Generate explanations
-            hint, explanation = self.explainer.generate_explanation(clue, answer, breakdown)
+            # Step 2: Generate explanations (nested dict)
+            explanation = self.explainer.generate_explanation(clue, answer, breakdown)
             
             # Step 3: Audit for metrics
             # Build clue_json in format expected by auditor
             clue_json = {
                 "clue": clue,
                 "answer": answer,
-                "definition": breakdown['definition'],
+                "definition": clue_dict.get('definition', ''),
                 "type": breakdown['clue_type'],
                 "wordplay_parts": {
                     "fodder": breakdown['fodder'],
@@ -674,6 +756,17 @@ class HoProcessor:
             )
             
             # Step 5: Build result object
+            # Map wordplay_parts from breakdown (Logic Tier)
+            wordplay_parts = breakdown.get('wordplay_parts', {
+                'type': breakdown.get('clue_type', ''),
+                'fodder': breakdown.get('fodder', ''),
+                'indicator': breakdown.get('indicator', ''),
+                'mechanism': breakdown.get('mechanism', '')
+            })
+
+            # Map ximenean_score to passed (main.py: >0.7 is pass)
+            passed = audit_result.ximenean_score > 0.7
+
             result = HoClueResult(
                 # Compatibility fields
                 id=clue_id,
@@ -690,13 +783,12 @@ class HoProcessor:
                 is_reviewed=str(clue_dict.get('is_reviewed', '0')) == '1',
                 # Reverse-engineered components
                 clue_type=breakdown['clue_type'],
-                definition=breakdown['definition'],
                 fodder=breakdown['fodder'],
                 indicator=breakdown['indicator'],
                 mechanism=breakdown['mechanism'],
+                wordplay_parts=wordplay_parts,
                 # Enrichment
                 explanation=explanation,
-                hint=hint,
                 # Audit metrics
                 ximenean_score=audit_result.ximenean_score,
                 difficulty_level=audit_result.difficulty_level,
